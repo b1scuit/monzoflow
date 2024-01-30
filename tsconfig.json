@@ -22,7 +22,8 @@
     "baseUrl" : "./src",
     "paths": {
       "@layouts/*": [ "./layouts/*"],
-      "@pages/*": [ "./pages/*"]
+      "@pages/*": [ "./pages/*"],
+      "@types/*": [ "./types/*"],
     }
   },
   "include": [

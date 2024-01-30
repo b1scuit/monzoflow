@@ -1,12 +1,26 @@
-**/*
+# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
 
-!**/*.tsx
-!**/*.ts
-!**/*.js
-!**/*.html
-!public/*
+# dependencies
+/**/node_modules
+/.pnp
+.pnp.js
 
-!firebase.json
-!**/package.json
-!**/package-lock.json
-!**/tsconfig.json
+# testing
+/coverage
+
+# production
+/build
+/functions/lib/*
+
+# misc
+.DS_Store
+**/.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+.firebase/
+.firebaserc
+
+**/*.log
+**/*.log*
