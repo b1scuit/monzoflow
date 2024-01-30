@@ -1,12 +1,16 @@
 import { FC } from "react";
 import { RouterProvider, createBrowserRouter } from "react-router-dom";
 
-import App from "./App";
+// Import layout
+import Default from "./layouts/Default";
+
+// Import pages
+import Index from "./pages";
 
 const router = createBrowserRouter([
     {
         path: "/",
-        element: <App />
+        element: <Default><Index /></Default>
     }
 ])
 
