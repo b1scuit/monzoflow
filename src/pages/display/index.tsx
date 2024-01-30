@@ -1,18 +1,10 @@
-import { FC, useEffect } from "react";
-import { useFetch } from "use-http";
-
-
+import FilterBar from "components/FilterBar/FilterBar";
+import { FC } from "react";
 
 export const Index: FC = () => {
-    const { get, loading, error, response } = useFetch('/ping/whoami')
-
-    useEffect(() => {
-       get().then((res) => {
-        console.log(response)
-       }) 
-    })
-
-    return <>{JSON.stringify(localStorage.getItem("auth_data"))}</>
+    return <>
+        <p>Filter: <FilterBar /></p>
+    </>
 }
 
 export default Index

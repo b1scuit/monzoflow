@@ -16,7 +16,7 @@ export const LoggedIn: FC<{ children: ReactElement }> = ({ children }) => {
         options.headers.Authorization = `${authDataObj.token_type} ${authDataObj.access_token}`
     }
 
-    return <Provider url="https://api.monzo.com" options={options}>{children}</Provider>
+    return <Provider url="https://api.monzo.com" options={options}><LoggedInStyled>{children}</LoggedInStyled></Provider>
 }
 
 export const LoggedInStyled: FC<{ children: ReactElement }> = ({ children }) => (

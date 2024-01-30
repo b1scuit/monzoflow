@@ -18,7 +18,7 @@ export const Index: FC = () => {
 
     return <div className="flex justify-center">
         <div>
-            <button className="button background-500-blue rounded" onClick={onClick} >Login With Monzo</button>
+            <button className="button background-500-blue rounded border" onClick={onClick} >Login With Monzo</button>
         </div>
     </div>
 }
