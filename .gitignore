@@ -1,6 +1,12 @@
 **/*
 
 !**/*.tsx
+!**/*.ts
 !**/*.js
 !**/*.html
 !public/*
+
+!firebase.json
+!**/package.json
+!**/package-lock.json
+!**/tsconfig.json
