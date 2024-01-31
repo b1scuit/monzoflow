@@ -9,11 +9,16 @@ import  LoggedIn  from "./layouts/LoggedIn";
 import Index from "./pages";
 import Auth from "./pages/auth/index";
 import Display from "./pages/display/index";
+import PrivacyPolicy from './pages/privacy-policy/index'
 
 const router = createBrowserRouter([
     {
         path: "/",
         element: <Default><Index /></Default>
+    },
+    {
+        path: "privacy-policy",
+        element: <Default><PrivacyPolicy /></Default>
     },
     {
         path: "/auth",

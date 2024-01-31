@@ -11,18 +11,6 @@ const FilterBar: FC<Props> = () => {
 
     return <div>
         <div>
-            <Listbox value={selectedAccounts} onChange={setSelectedAccounts} multiple>
-                <Listbox.Button>
-                    {selectedAccounts.map((account) => account.description).join(', ')}
-                </Listbox.Button>
-                <Listbox.Options>
-                    {accounts && accounts.map((account) => (
-                        <Listbox.Option key={account.id} value={account.id}>
-                            {account.description}
-                        </Listbox.Option>
-                    ))}
-                </Listbox.Options>
-            </Listbox>
         </div>
     </div>
 }
