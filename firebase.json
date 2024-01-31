@@ -11,6 +11,10 @@
         "source": "**",
         "destination": "/index.html"
       }
+    ],
+    "predeploy": [
+      "rm -Rf build/",
+      "npm run build:production"
     ]
   },
   "emulators": {
@@ -36,7 +40,6 @@
         "firebase-debug.*.log"
       ],
       "predeploy": [
-        "npm --prefix \"$RESOURCE_DIR\" run lint",
         "npm --prefix \"$RESOURCE_DIR\" run build"
       ]
     }
