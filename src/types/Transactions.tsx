@@ -12,7 +12,7 @@ export interface Transaction {
     can_split_the_bill: boolean;
     categories: Categories;
     category: string;
-    counterparty: Counterparty;
+    counterparty?: Counterparty;
     created: string;
     currency: string;
     dedupe_id: string;
