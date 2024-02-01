@@ -1,3 +1,4 @@
+import { DatabaseProvider } from "components/DatabaseContext/DatabaseContext";
 import { AuthenticationData } from "../types/AuthenticationData";
 import { FC, ReactElement } from "react";
 import { Provider } from "use-http";
@@ -8,15 +9,19 @@ export const LoggedIn: FC<{ children: ReactElement }> = ({ children }) => {
         headers: {
             Accept: 'application/json',
             Authorization: ""
-          }
+        }
     }
 
-    if (authData != "") {
+    if (authData && authData !== "") {
         const authDataObj = JSON.parse(authData as string) as AuthenticationData
         options.headers.Authorization = `${authDataObj.token_type} ${authDataObj.access_token}`
     }
 
-    return <Provider url="https://api.monzo.com" options={options}><LoggedInStyled>{children}</LoggedInStyled></Provider>
+    return <DatabaseProvider>
+        <Provider url="https://api.monzo.com" options={options}>
+            <LoggedInStyled>{children}</LoggedInStyled>
+        </Provider>
+    </DatabaseProvider>
 }
 
 export const LoggedInStyled: FC<{ children: ReactElement }> = ({ children }) => (

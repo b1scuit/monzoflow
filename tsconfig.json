@@ -18,13 +18,8 @@
     "resolveJsonModule": true,
     "isolatedModules": true,
     "noEmit": true,
-    "jsx": "react-jsx",
-    "baseUrl" : "./src",
-    "paths": {
-      "@layouts/*": [ "./layouts/*"],
-      "@pages/*": [ "./pages/*"],
-      "@types/*": [ "./types/*"],
-    }
+    "jsx": "preserve",
+    "baseUrl": "./src"
   },
   "include": [
     "src"

@@ -27,7 +27,9 @@ const initFirebase = (): firebase => {
     const app = initializeApp(firebaseConfig);
     const functions = getFunctions(app)
     
-    connectFunctionsEmulator(functions, "localhost", 5001);
+    if (process.env.NODE_ENV !== "production") {
+        connectFunctionsEmulator(functions, "localhost", 5001);
+    }
 
     return {
         app,

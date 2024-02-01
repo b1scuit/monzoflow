@@ -14,7 +14,7 @@
     ],
     "predeploy": [
       "rm -Rf build/",
-      "npm run build:production"
+      "npm run build"
     ]
   },
   "emulators": {

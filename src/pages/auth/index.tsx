@@ -1,6 +1,6 @@
 import { useApp } from "components/AppContext/context";
-import { FC, useEffect, useState } from "react";
-import { redirect, useNavigate, useSearchParams } from "react-router-dom";
+import { FC, useEffect } from "react";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { Functions, httpsCallable } from 'firebase/functions';
 import type { AuthenticationData } from "../../types/AuthenticationData";
 
@@ -17,7 +17,8 @@ export const Index: FC = () => {
             code: searchParams.get("code"),
         }).then((r) => {
             localStorage.setItem("auth_data", JSON.stringify(r.data))
-            return navigate("/display")
+        }).then(() => {
+            navigate("/display")
         })
     })
 

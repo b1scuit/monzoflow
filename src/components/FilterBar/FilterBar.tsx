@@ -1,16 +1,14 @@
-import { FC, useState } from "react";
-import { Listbox } from '@headlessui/react'
 import { Account } from "../../types/Account";
-import { useAccounts } from "components/Monzo/useAccounts";
+import AccountSelect from "components/Filter/AccountSelect";
+import { FC, useState } from "react";
 
 export type Props = {}
 
 const FilterBar: FC<Props> = () => {
-    const { accounts } = useAccounts();    
-    const [selectedAccounts, setSelectedAccounts] = useState<Account[]>(accounts)
-
-    return <div>
+    const [a, setA ] = useState<Account[]>([]);
+    return <div className="flex">
         <div>
+            <AccountSelect accounts={a} setAccounts={setA}/>
         </div>
     </div>
 }
