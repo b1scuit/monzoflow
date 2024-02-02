@@ -11,7 +11,7 @@ export class MySubClassedDexie extends Dexie {
         super('monzoflow');
         this.version(1).stores({
             accounts: '++id', // Primary key and indexed props
-            transactions: '++id, account_id, include_in_spending'
+            transactions: '++id, account_id, include_in_spending, amount'
         });
     }
 }

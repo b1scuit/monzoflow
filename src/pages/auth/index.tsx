@@ -18,7 +18,7 @@ export const Index: FC = () => {
         }).then((r) => {
             localStorage.setItem("auth_data", JSON.stringify(r.data))
         }).then(() => {
-            navigate("/display")
+            navigate("/allow-access")
         })
     })
 

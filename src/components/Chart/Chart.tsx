@@ -94,7 +94,7 @@ export const Chart: FC<ChartProps> = ({ width, height, data }) => {
             }
         }
 
-        return (node && <text
+        return (<text
                 key={i}
                 x={calcX()}
                 y={calcY()}

@@ -10,6 +10,7 @@ import Index from "./pages";
 import Auth from "./pages/auth/index";
 import Display from "./pages/display/index";
 import PrivacyPolicy from './pages/privacy-policy/index'
+import AllowAcces from './pages/allowAccess/index';
 
 const router = createBrowserRouter([
     {
@@ -23,6 +24,10 @@ const router = createBrowserRouter([
     {
         path: "/auth",
         element: <Default><Auth /></Default>
+    },
+    {
+        path: "/allow-access",
+        element: <Default><AllowAcces /></Default>
     },
     {
         path: "/display",
