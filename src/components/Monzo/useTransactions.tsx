@@ -11,11 +11,10 @@ export const useTransactions = () => {
     const db = useDatabase()
 
     const retrieveTransactions = (account_id: string) => {
-        return get("?account_id=" + account_id).then((response) => {
+        return get("?expand[]=merchant&since=2023-02-01T00:00:00Z&before=2024-02-01T00:00:00Z&account_id=" + account_id).then((response) => {
             if (response && response.transactions) {
             return db.transactions.bulkPut(response.transactions)
             }
-
         })
     }
 

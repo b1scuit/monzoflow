@@ -25,7 +25,7 @@ export interface Transaction {
     labels?: null;
     local_amount: number;
     local_currency: string;
-    merchant?: string | null;
+    merchant?: Merchant;
     merchant_feedback_uri: string;
     metadata: Metadata;
     notes: string;
@@ -104,3 +104,36 @@ export interface Metadata {
     bills_pot_id?: string | null;
     subscription_id?: string | null;
 }
+
+export interface Merchant {
+    id: string;
+    group_id: string;
+    name: string;
+    logo: string;
+    emoji: string;
+    category: string;
+    online: boolean;
+    atm: boolean;
+    address: Address;
+    disable_feedback: boolean;
+    suggested_tags: string;
+    metadata: Metadata;
+  }
+  export interface Address {
+    short_formatted: string;
+    city: string;
+    latitude: number;
+    longitude: number;
+    zoom_level: number;
+    approximate: boolean;
+    formatted: string;
+    address: string;
+    region: string;
+    country: string;
+    postcode: string;
+  }
+  export interface Metadata {
+    suggested_tags: string;
+    website: string;
+  }
+  

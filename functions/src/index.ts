@@ -7,6 +7,19 @@
  * See a full list of supported triggers at https://firebase.google.com/docs/functions
 */
 
+/*
+ * IMPORTANT
+ *
+ * Turns out on 15th Jan 2020, Google changed the security settings where 
+ * all new functions no longer have a Cloud Functions Invoker. This means
+ * that all newly created functions will have their access forbidden, 
+ * thus resulting in a CORS policy block.
+ * 
+ * Here is how you fix it, as it's not all that obvious:
+ * 
+ * https://cloud.google.com/functions/docs/securing/managing-access-iam#allowing_unauthenticated_function_invocation
+*/
+
 import {onCall} from "firebase-functions/v2/https";
 
 const fetch = require("node-fetch");
