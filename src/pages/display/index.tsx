@@ -1,11 +1,9 @@
-import { Chart, Data, Node, Link } from "components/Chart/Chart";
+import { Chart, Node, Link } from "components/Chart/Chart";
 import { useDatabase } from "components/DatabaseContext/DatabaseContext";
-import AccountSelect from "components/Filter/AccountSelect";
-import FilterBar from "components/FilterBar/FilterBar";
+import FilterBar, { FilterOptions } from "components/FilterBar/FilterBar";
 import { useAccounts } from "components/Monzo/useAccounts";
 import { useTransactions } from "components/Monzo/useTransactions";
-import { TransactionsTable } from "components/TransactionsTable/TransactionsTable";
-import { FC, useEffect, useState } from "react";
+import { FC, useEffect, useState, useCallback } from "react";
 import { Account, Owners } from "types/Account";
 import { Transaction } from "types/Transactions";
 
@@ -48,9 +46,10 @@ const renderName = (account: Account): string => {
 
 export const Index: FC = () => {
     let nodes = new Map<string, Node>()
-    let links = new Map<string, Link>()
     let [ chartnodes, setChartNodes] = useState<Node[]>([])
     let [chartLinks, setChartLinks] = useState<Link[]>([])
+    let [allTransactions, setAllTransactions] = useState<Transaction[]>([])
+    let [filters, setFilters] = useState<FilterOptions | null>(null)
 
     const [loading, setLoading] = useState<boolean>(true)
     const db = useDatabase();
@@ -70,7 +69,7 @@ export const Index: FC = () => {
             return count
         })
         .then((count: number) =>{
-            if (count == 0) {
+            if (count === 0) {
                 return retrieveAccounts().then(() => db.accounts.toArray())
             }
 
@@ -88,48 +87,149 @@ export const Index: FC = () => {
         })
         // Retrieve transactions from DB
         .then(() => db.transactions.toArray())
-        // Process the nodes
-        // Process them into state
+        // Store all transactions for filtering
         .then((transactions: Transaction[]) => {
-            console.table(transactions)
-            nodes.set("other", {id: "other",description: "Other"})
-            transactions.forEach((value: Transaction) => {
-                if (value.merchant) {
-                    nodes.set(value.merchant.id, {id: value.merchant.id, description: value.merchant.name})
+            setAllTransactions(transactions)
+        }).finally(() => setLoading(false))
+    }
 
-                    if (value.amount > 0) {
-                        links.set(`${value.merchant.id}:${value.account_id}`, {
-                            source: value.merchant.id,
-                            target: value.account_id,
-                            value: value.amount 
-                        })
-                    }
+    const applyFilters = useCallback((transactions: Transaction[], filterOptions: FilterOptions) => {
+        let filteredTransactions = [...transactions];
 
-                    if (value.amount < 0 ) {
-                        links.set(`${value.merchant.id}:${value.account_id}`, {
-                            target: value.merchant.id,
-                            source: value.account_id,
-                            value: value.amount 
-                        })
-                    }
+        // Filter by selected accounts
+        if (filterOptions.selectedAccounts.length > 0) {
+            const selectedAccountIds = filterOptions.selectedAccounts.map(acc => acc.id);
+            filteredTransactions = filteredTransactions.filter(t => selectedAccountIds.includes(t.account_id));
+        }
+
+        // Filter by date range
+        if (filterOptions.dateRange.start || filterOptions.dateRange.end) {
+            filteredTransactions = filteredTransactions.filter(t => {
+                const transactionDate = new Date(t.created);
+                const start = filterOptions.dateRange.start;
+                const end = filterOptions.dateRange.end;
+                
+                if (start && transactionDate < start) return false;
+                if (end && transactionDate > end) return false;
+                return true;
+            });
+        }
+
+        // Filter by excluded categories
+        if (filterOptions.excludedCategories.length > 0) {
+            filteredTransactions = filteredTransactions.filter(t => 
+                !filterOptions.excludedCategories.includes(t.category)
+            );
+        }
+
+        // Filter by spending summary exclusion
+        if (filterOptions.excludeFromSpending) {
+            filteredTransactions = filteredTransactions.filter(t => t.include_in_spending);
+        }
+
+        return filteredTransactions;
+    }, []);
+
+    const processTransactionsToChart = useCallback((transactions: Transaction[]) => {
+        const newNodes = new Map<string, Node>()
+        const newLinks = new Map<string, Link>()
+        
+        // Add account nodes
+        db.accounts.toArray().then(accounts => {
+            accounts.forEach((acc: Account) => {
+                if (filters?.selectedAccounts.find(sa => sa.id === acc.id)) {
+                    newNodes.set(acc.id, {id: acc.id, description: renderName(acc)})
                 }
             })
         })
-        // Add to state
-        .then(() => {
-            setChartNodes([...nodes.values()])
-            setChartLinks([...links.values()])
-        }).finally(() => setLoading(false))
-    }
+
+        // Group merchants by frequency and apply payee limit
+        const merchantCounts = new Map<string, { count: number, totalAmount: number, merchant: any }>()
+        
+        transactions.forEach((transaction: Transaction) => {
+            if (transaction.merchant) {
+                const existing = merchantCounts.get(transaction.merchant.id) || { count: 0, totalAmount: 0, merchant: transaction.merchant }
+                merchantCounts.set(transaction.merchant.id, {
+                    count: existing.count + 1,
+                    totalAmount: existing.totalAmount + Math.abs(transaction.amount),
+                    merchant: transaction.merchant
+                })
+            }
+        })
+
+        // Sort merchants by total amount and apply limit
+        const sortedMerchants = Array.from(merchantCounts.entries())
+            .sort(([,a], [,b]) => b.totalAmount - a.totalAmount)
+        
+        let topMerchants: Array<[string, any]>
+        let otherMerchants: Array<[string, any]> = []
+        
+        if (filters?.payeeLimit === 'all') {
+            topMerchants = sortedMerchants
+        } else {
+            const limit = filters?.payeeLimit || 50
+            topMerchants = sortedMerchants.slice(0, limit)
+            otherMerchants = sortedMerchants.slice(limit)
+        }
+
+        // Add top merchant nodes
+        topMerchants.forEach(([merchantId, data]) => {
+            newNodes.set(merchantId, {id: merchantId, description: data.merchant.name})
+        })
+
+        // Add "Other" node if there are grouped merchants
+        if (otherMerchants.length > 0) {
+            newNodes.set("other", {id: "other", description: "Other"})
+        }
+
+        // Process transactions into links
+        transactions.forEach((transaction: Transaction) => {
+            if (transaction.merchant) {
+                let targetMerchantId = transaction.merchant.id
+                
+                // Group into "other" if not in top merchants
+                if (transaction.merchant && otherMerchants.find(([id]) => id === transaction.merchant!.id)) {
+                    targetMerchantId = "other"
+                }
+
+                const linkKey = `${transaction.account_id}:${targetMerchantId}`
+                const existingLink = newLinks.get(linkKey)
+                
+                if (transaction.amount < 0) { // Outgoing transaction
+                    const linkValue = Math.abs(transaction.amount)
+                    if (existingLink) {
+                        existingLink.value += linkValue
+                    } else {
+                        newLinks.set(linkKey, {
+                            source: transaction.account_id,
+                            target: targetMerchantId,
+                            value: linkValue
+                        })
+                    }
+                }
+            }
+        })
+
+        setChartNodes([...newNodes.values()])
+        setChartLinks([...newLinks.values()])
+    }, [filters, db.accounts])
 
     useEffect(() => {
         setupFunction()
         // eslint-disable-next-line
     }, [])
 
+    useEffect(() => {
+        if (filters && allTransactions.length > 0) {
+            const filteredTransactions = applyFilters(allTransactions, filters)
+            processTransactionsToChart(filteredTransactions)
+        }
+    }, [filters, allTransactions, applyFilters, processTransactionsToChart])
+
 
     return (loading) ? <h1>Loading</h1> : <div className="flex flex-col">
-        <div className="block m-auto">
+        <FilterBar onFiltersChange={setFilters} />
+        <div className="block m-auto mt-4">
             <Chart width={900} height={900} data={{nodes: chartnodes, links: chartLinks}} />
         </div>
     </div>
