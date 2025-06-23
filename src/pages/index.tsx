@@ -14,6 +14,7 @@ export const Index: FC = () => {
         }
 
     const onClick = () => {
+        console.log(monzoAuthUri)
         window.location.href = monzoAuthUri as string
     }
 
