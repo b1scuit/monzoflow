@@ -9,6 +9,7 @@ import  LoggedIn  from "./layouts/LoggedIn";
 import Index from "./pages";
 import Auth from "./pages/auth/index";
 import Display from "./pages/display/index";
+import Budget from "./pages/budget/index";
 import PrivacyPolicy from './pages/privacy-policy/index'
 import AllowAcces from './pages/allowAccess/index';
 
@@ -32,6 +33,10 @@ const router = createBrowserRouter([
     {
         path: "/display",
         element: <LoggedIn><Display /></LoggedIn>
+    },
+    {
+        path: "/budget",
+        element: <LoggedIn><Budget /></LoggedIn>
     }
 ])
 
