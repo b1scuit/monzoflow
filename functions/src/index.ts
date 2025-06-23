@@ -20,25 +20,62 @@
  * https://cloud.google.com/functions/docs/securing/managing-access-iam#allowing_unauthenticated_function_invocation
 */
 
-import {onCall} from "firebase-functions/v2/https";
+import {onCall, HttpsError} from "firebase-functions/v2/https";
 
 const fetch = require("node-fetch");
-const FormStuff = require("form-data");
 
 // Start writing functions
 // https://firebase.google.com/docs/functions/typescript
-export const tokenExchange = onCall((request) => {
-    const body = new FormStuff();
-    body.append("grant_type", "authorization_code");
-    body.append("client_id", process.env.CLIENT_ID);
-    body.append("client_secret", process.env.CLIENT_SECRET);
-    body.append("redirect_uri", process.env.REDIRECT_URI);
-    body.append("code", request.data.code);
+export const tokenExchange = onCall({
+    cors: true // Enable CORS for all origins
+}, async (request) => {
+    try {
+        // Validate input
+        if (!request.data || !request.data.code) {
+            throw new HttpsError('invalid-argument', 'Authorization code is required');
+        }
 
-    const fetchFromUrl = async () => await (await fetch("https://api.monzo.com/oauth2/token", {
-        method: "post",
-        body: body,
-    })).json();
+        // Use URLSearchParams for form data instead of form-data library
+        const body = new URLSearchParams();
+        body.append("grant_type", "authorization_code");
+        body.append("client_id", process.env.REACT_APP_MONZO_CLIENT_ID || "");
+        body.append("client_secret", process.env.REACT_APP_MONZO_CLIENT_SECRET || "");
+        body.append("redirect_uri", process.env.REACT_APP_MONZO_REDIRECT_URI || "");
+        body.append("code", request.data.code);
 
-    return fetchFromUrl().then((data) => data);
+        console.log(body)
+        const response = await fetch("https://api.monzo.com/oauth2/token", {
+            method: "post",
+            headers: {
+                "Content-Type": "application/x-www-form-urlencoded",
+            },
+            body: body.toString(),
+        });
+
+        const data = await response.json();
+
+        if (!response.ok) {
+            console.error('Monzo API error details:', {
+                status: response.status,
+                statusText: response.statusText,
+                responseData: data,
+                requestData: {
+                    grant_type: "authorization_code",
+                    client_id: process.env.REACT_APP_MONZO_CLIENT_ID,
+                    client_secret: process.env.REACT_APP_MONZO_CLIENT_SECRET || "N/A",
+                    redirect_uri: process.env.REACT_APP_MONZO_REDIRECT_URI,
+                    code: request.data.code
+                }
+            });
+            throw new HttpsError('internal', `Monzo API error: ${response.status} - ${JSON.stringify(data)}`);
+        }
+
+        return data;
+    } catch (error) {
+        console.error('Token exchange error:', error);
+        if (error instanceof HttpsError) {
+            throw error;
+        }
+        throw new HttpsError('internal', 'Failed to exchange token');
+    }
 });

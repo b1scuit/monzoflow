@@ -16,6 +16,7 @@ export const Index: FC = () => {
         swapToken({
             code: searchParams.get("code"),
         }).then((r) => {
+            console.log("Authentication data received:", r.data);
             localStorage.setItem("auth_data", JSON.stringify(r.data))
         }).then(() => {
             navigate("/allow-access")
