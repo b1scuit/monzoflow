@@ -65,6 +65,14 @@ const BudgetPage: FC = () => {
 
                         {/* Quick Actions */}
                         <div className="flex items-center space-x-3">
+                            <button 
+                                onClick={() => window.location.href = '/settings'}
+                                className="bg-gray-500 text-white px-4 py-2 rounded-md hover:bg-gray-600 transition-colors flex items-center space-x-2"
+                                title="Settings"
+                            >
+                                <span>⚙️</span>
+                                <span>Settings</span>
+                            </button>
                             <button className="bg-blue-500 text-white px-4 py-2 rounded-md hover:bg-blue-600 transition-colors">
                                 Create Budget
                             </button>

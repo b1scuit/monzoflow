@@ -60,7 +60,6 @@ export const Index: FC = () => {
 
     const [loading, setLoading] = useState<boolean>(true)
     const [loadingMessage, setLoadingMessage] = useState<string>('Initializing...')
-    const [showResetOption, setShowResetOption] = useState<boolean>(false)
     const db = useDatabase();
     const { retrieveAccounts } = useAccounts();
     const { retrieveTransactions, loading: transactionLoading } = useTransactions();
@@ -164,14 +163,11 @@ export const Index: FC = () => {
             
             // Provide specific error messages based on error type
             if (error.name === 'DatabaseClosedError' || error.name === 'VersionError') {
-                setLoadingMessage('Database version conflict detected.')
-                setShowResetOption(true)
+                setLoadingMessage('Database version conflict. Please visit Settings to reset.')
             } else if (error.message?.includes('Failed to fetch')) {
                 setLoadingMessage('Network error. Please check your connection and try again.')
-                setShowResetOption(true)
             } else {
-                setLoadingMessage('Error loading data. Please try again.')
-                setShowResetOption(true)
+                setLoadingMessage('Error loading data. Please visit Settings if this persists.')
             }
         } finally {
             // Only set loading to false when everything is truly complete
@@ -219,30 +215,6 @@ export const Index: FC = () => {
         setChartLinks([...newLinks.values()])
     }, [allAccounts])
 
-    // Function to handle manual database reset
-    const handleDatabaseReset = async () => {
-        setLoadingMessage('Resetting database...')
-        setShowResetOption(false)
-        setLoading(true)
-        
-        try {
-            await db.resetDatabase()
-            setLoadingMessage('Database reset successfully. Reloading...')
-            // Clear localStorage cache as well
-            localStorage.removeItem('lastSignIn')
-            Object.keys(localStorage).forEach(key => {
-                if (key.startsWith('lastTransactionPull_')) {
-                    localStorage.removeItem(key)
-                }
-            })
-            // Restart the setup process
-            setTimeout(() => setupFunction(), 1000)
-        } catch (error) {
-            console.error('Failed to reset database:', error)
-            setLoadingMessage('Reset failed. Please clear browser data manually and refresh.')
-            setShowResetOption(true)
-        }
-    }
 
     useEffect(() => {
         setupFunction()
@@ -263,7 +235,7 @@ export const Index: FC = () => {
                     <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto mb-4"></div>
                     <h2 className="text-xl font-semibold text-gray-900">Loading your financial data...</h2>
                     <p className="text-gray-600 mt-2">{loadingMessage}</p>
-                    {transactionLoading && !showResetOption && (
+                    {transactionLoading && (
                         <div className="mt-4">
                             <div className="w-64 bg-gray-200 rounded-full h-2 mx-auto">
                                 <div className="bg-blue-500 h-2 rounded-full animate-pulse" style={{width: '60%'}}></div>
@@ -271,16 +243,16 @@ export const Index: FC = () => {
                             <p className="text-sm text-gray-500 mt-2">Fetching transactions...</p>
                         </div>
                     )}
-                    {showResetOption && (
+                    {(loadingMessage.includes('Settings') || loadingMessage.includes('Database version')) && (
                         <div className="mt-6">
                             <button 
-                                onClick={handleDatabaseReset}
-                                className="bg-red-500 hover:bg-red-600 text-white px-6 py-2 rounded-lg transition-colors font-medium"
+                                onClick={() => window.location.href = '/settings'}
+                                className="bg-blue-500 hover:bg-blue-600 text-white px-6 py-2 rounded-lg transition-colors font-medium"
                             >
-                                Reset Database
+                                Go to Settings
                             </button>
                             <p className="text-sm text-gray-500 mt-2">
-                                This will clear all local data and refetch from Monzo
+                                Manage your data and resolve issues in Settings
                             </p>
                         </div>
                     )}
@@ -396,12 +368,23 @@ export const Index: FC = () => {
             {/* Quick Actions Floating Button */}
             <div className="fixed bottom-6 right-6">
                 <div className="flex flex-col space-y-2">
-                    <button className="bg-blue-500 text-white p-3 rounded-full shadow-lg hover:bg-blue-600 transition-colors">
+                    <button 
+                        onClick={() => window.location.href = '/settings'}
+                        className="bg-gray-500 text-white p-3 rounded-full shadow-lg hover:bg-gray-600 transition-colors"
+                        title="Settings"
+                    >
+                        <span className="text-xl">⚙️</span>
+                    </button>
+                    <button 
+                        className="bg-blue-500 text-white p-3 rounded-full shadow-lg hover:bg-blue-600 transition-colors"
+                        title="Cards"
+                    >
                         <span className="text-xl">💳</span>
                     </button>
                     <button 
                         onClick={() => window.location.href = '/budget'}
                         className="bg-green-500 text-white p-3 rounded-full shadow-lg hover:bg-green-600 transition-colors"
+                        title="Budget"
                     >
                         <span className="text-xl">📊</span>
                     </button>
