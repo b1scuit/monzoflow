@@ -88,7 +88,8 @@ const Settings: FC = () => {
             lastSignIn: lastSignIn ? new Date(parseInt(lastSignIn)).toLocaleString() : null,
             tokenAge
         });
-    }, [isTokenStale]);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []); // Intentionally exclude isTokenStale to prevent infinite loop
 
     const formatBytes = (bytes: number): string => {
         if (bytes === 0) return '0 Bytes';

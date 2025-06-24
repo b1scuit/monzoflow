@@ -1,6 +1,7 @@
 import { useDatabase } from "components/DatabaseContext/DatabaseContext";
 import { Transaction } from "../../types/Transactions"
 import { useFetch } from "use-http";
+import { useCallback, useMemo } from "react";
 
 type TransactionsResponse = {
     transactions: Transaction[]
@@ -10,10 +11,10 @@ export const useTransactions = () => {
     const { get, loading, error } = useFetch<TransactionsResponse | undefined>('/transactions')
     const db = useDatabase()
 
-    // Check if token is stale (older than 5 minutes)
-    const isTokenStale = (): boolean => {
+    // Memoized token staleness check to prevent excessive calls
+    const tokenStaleness = useMemo(() => {
         const authData = localStorage.getItem('auth_data')
-        if (!authData) return true
+        if (!authData) return { isStale: true, checkedAt: Date.now() }
         
         try {
             JSON.parse(authData) // Validate JSON format
@@ -23,23 +24,46 @@ export const useTransactions = () => {
                 // If no timestamp exists, set it now and consider token fresh
                 localStorage.setItem('tokenTimestamp', Date.now().toString())
                 console.log('No token timestamp found, setting fresh timestamp - token is fresh')
-                return false // Fresh token
+                return { isStale: false, checkedAt: Date.now() }
             }
             
             const fiveMinutesAgo = Date.now() - (5 * 60 * 1000)
             const isStale = parseInt(tokenTimestamp) < fiveMinutesAgo
             
-            if (isStale) {
-                console.log('Token is stale (older than 5 minutes)')
-            } else {
-                console.log('Token is fresh (within 5 minutes)')
+            // Only log once when staleness changes, not on every call
+            const lastLoggedStatus = localStorage.getItem('lastTokenStatus')
+            const currentStatus = isStale ? 'stale' : 'fresh'
+            
+            if (lastLoggedStatus !== currentStatus) {
+                localStorage.setItem('lastTokenStatus', currentStatus)
+                if (isStale) {
+                    console.log('Token is stale (older than 5 minutes)')
+                } else {
+                    console.log('Token is fresh (within 5 minutes)')
+                }
             }
             
-            return isStale
+            return { isStale, checkedAt: Date.now() }
         } catch {
-            return true
+            return { isStale: true, checkedAt: Date.now() }
         }
-    }
+    }, []) // Empty dependency array means this only runs once
+
+    // Stable function reference that checks if we need to recompute staleness
+    const isTokenStale = useCallback((): boolean => {
+        // If the check is recent (within 30 seconds), use cached result
+        const thirtySecondsAgo = Date.now() - (30 * 1000)
+        if (tokenStaleness.checkedAt > thirtySecondsAgo) {
+            return tokenStaleness.isStale
+        }
+        
+        // For real-time checks, do a quick validation without logging
+        const tokenTimestamp = localStorage.getItem('tokenTimestamp')
+        if (!tokenTimestamp) return true
+        
+        const fiveMinutesAgo = Date.now() - (5 * 60 * 1000)
+        return parseInt(tokenTimestamp) < fiveMinutesAgo
+    }, [tokenStaleness])
 
     // Check if transactions were pulled recently (within 5 minutes)
     const wasRecentlyPulled = (accountId: string): boolean => {
