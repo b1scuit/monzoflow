@@ -66,12 +66,36 @@ export const Index: FC = () => {
     ];
 
     const benefits = [
-        "🔒 **Secure**: Your data stays on your device - we don't store anything",
-        "⚡ **Fast**: Local IndexedDB storage for instant access",
-        "🎯 **Automatic**: No manual data entry required",
-        "📱 **Responsive**: Works on all devices",
-        "🔄 **Real-time**: Live updates as you spend",
-        "🎨 **Visual**: Beautiful charts and insights"
+        {
+            icon: "🔒",
+            title: "Secure",
+            description: "Your data stays on your device - we don't store anything"
+        },
+        {
+            icon: "⚡",
+            title: "Fast", 
+            description: "Local IndexedDB storage for instant access"
+        },
+        {
+            icon: "🎯",
+            title: "Automatic",
+            description: "No manual data entry required"
+        },
+        {
+            icon: "📱",
+            title: "Responsive",
+            description: "Works on all devices"
+        },
+        {
+            icon: "🔄",
+            title: "Real-time",
+            description: "Live updates as you spend"
+        },
+        {
+            icon: "🎨",
+            title: "Visual",
+            description: "Beautiful charts and insights"
+        }
     ];
 
     return (
@@ -196,7 +220,13 @@ export const Index: FC = () => {
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                         {benefits.map((benefit, index) => (
                             <div key={index} className="bg-white p-6 rounded-lg shadow-sm border border-gray-100">
-                                <div className="text-gray-700" dangerouslySetInnerHTML={{ __html: benefit }} />
+                                <div className="flex items-start space-x-3">
+                                    <div className="text-2xl">{benefit.icon}</div>
+                                    <div>
+                                        <h3 className="font-semibold text-gray-900 mb-1">{benefit.title}</h3>
+                                        <p className="text-gray-600 text-sm">{benefit.description}</p>
+                                    </div>
+                                </div>
                             </div>
                         ))}
                     </div>
