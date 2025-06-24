@@ -1,7 +1,6 @@
 import { useDatabase } from "components/DatabaseContext/DatabaseContext";
 import { Transaction } from "../../types/Transactions"
 import { useFetch } from "use-http";
-import { AuthenticationData } from "../../types/AuthenticationData";
 
 type TransactionsResponse = {
     transactions: Transaction[]

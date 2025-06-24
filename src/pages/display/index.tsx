@@ -60,6 +60,7 @@ export const Index: FC = () => {
 
     const [loading, setLoading] = useState<boolean>(true)
     const [loadingMessage, setLoadingMessage] = useState<string>('Initializing...')
+    const [showResetOption, setShowResetOption] = useState<boolean>(false)
     const db = useDatabase();
     const { retrieveAccounts } = useAccounts();
     const { retrieveTransactions, loading: transactionLoading } = useTransactions();
@@ -72,6 +73,31 @@ export const Index: FC = () => {
     // Enhanced setup function with proper loading state management
     const setupFunction = async () => {
         try {
+            setLoadingMessage('Initializing database...')
+            
+            // Try to open the database first
+            try {
+                await db.open()
+                console.log('Database opened successfully')
+            } catch (dbError: any) {
+                console.error('Database error:', dbError)
+                
+                // Handle version error specifically
+                if (dbError.name === 'VersionError' || dbError.name === 'DatabaseClosedError') {
+                    setLoadingMessage('Resolving database version conflict...')
+                    try {
+                        await db.resetDatabase()
+                        setLoadingMessage('Database reset successfully, continuing...')
+                    } catch (resetError) {
+                        console.error('Failed to reset database:', resetError)
+                        setLoadingMessage('Database error. Please clear your browser data and refresh.')
+                        return
+                    }
+                } else {
+                    throw dbError
+                }
+            }
+            
             setLoadingMessage('Checking local accounts...')
             
             // Check if we have accounts locally
@@ -133,9 +159,20 @@ export const Index: FC = () => {
             
             setLoadingMessage('Complete!')
             
-        } catch (error) {
+        } catch (error: any) {
             console.error('Setup failed:', error)
-            setLoadingMessage('Error loading data. Please try refreshing.')
+            
+            // Provide specific error messages based on error type
+            if (error.name === 'DatabaseClosedError' || error.name === 'VersionError') {
+                setLoadingMessage('Database version conflict detected.')
+                setShowResetOption(true)
+            } else if (error.message?.includes('Failed to fetch')) {
+                setLoadingMessage('Network error. Please check your connection and try again.')
+                setShowResetOption(true)
+            } else {
+                setLoadingMessage('Error loading data. Please try again.')
+                setShowResetOption(true)
+            }
         } finally {
             // Only set loading to false when everything is truly complete
             setTimeout(() => setLoading(false), 500)
@@ -182,6 +219,31 @@ export const Index: FC = () => {
         setChartLinks([...newLinks.values()])
     }, [allAccounts])
 
+    // Function to handle manual database reset
+    const handleDatabaseReset = async () => {
+        setLoadingMessage('Resetting database...')
+        setShowResetOption(false)
+        setLoading(true)
+        
+        try {
+            await db.resetDatabase()
+            setLoadingMessage('Database reset successfully. Reloading...')
+            // Clear localStorage cache as well
+            localStorage.removeItem('lastSignIn')
+            Object.keys(localStorage).forEach(key => {
+                if (key.startsWith('lastTransactionPull_')) {
+                    localStorage.removeItem(key)
+                }
+            })
+            // Restart the setup process
+            setTimeout(() => setupFunction(), 1000)
+        } catch (error) {
+            console.error('Failed to reset database:', error)
+            setLoadingMessage('Reset failed. Please clear browser data manually and refresh.')
+            setShowResetOption(true)
+        }
+    }
+
     useEffect(() => {
         setupFunction()
         // eslint-disable-next-line
@@ -201,12 +263,25 @@ export const Index: FC = () => {
                     <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto mb-4"></div>
                     <h2 className="text-xl font-semibold text-gray-900">Loading your financial data...</h2>
                     <p className="text-gray-600 mt-2">{loadingMessage}</p>
-                    {transactionLoading && (
+                    {transactionLoading && !showResetOption && (
                         <div className="mt-4">
                             <div className="w-64 bg-gray-200 rounded-full h-2 mx-auto">
                                 <div className="bg-blue-500 h-2 rounded-full animate-pulse" style={{width: '60%'}}></div>
                             </div>
                             <p className="text-sm text-gray-500 mt-2">Fetching transactions...</p>
+                        </div>
+                    )}
+                    {showResetOption && (
+                        <div className="mt-6">
+                            <button 
+                                onClick={handleDatabaseReset}
+                                className="bg-red-500 hover:bg-red-600 text-white px-6 py-2 rounded-lg transition-colors font-medium"
+                            >
+                                Reset Database
+                            </button>
+                            <p className="text-sm text-gray-500 mt-2">
+                                This will clear all local data and refetch from Monzo
+                            </p>
                         </div>
                     )}
                 </div>
