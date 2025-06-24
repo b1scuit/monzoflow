@@ -1,9 +1,8 @@
-import { FC, useState, useEffect } from 'react';
+import { FC, useState } from 'react';
 import { useDatabase } from 'components/DatabaseContext/DatabaseContext';
 import { Budget, BudgetCategory } from 'types/Budget';
-import { Transaction } from 'types/Transactions';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { BudgetCalculationService, CategoryMappingRule } from 'services/BudgetCalculationService';
+import { BudgetCalculationService } from 'services/BudgetCalculationService';
 import { useBudgetCalculation } from 'hooks/useBudgetCalculation';
 
 interface BudgetCategoryManagerProps {

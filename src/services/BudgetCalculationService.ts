@@ -194,16 +194,56 @@ export class BudgetCalculationService {
     }
 
     /**
-     * Get available Monzo categories from transactions
+     * Get available Monzo categories from transactions with enhanced processing
      */
     static getAvailableCategories(transactions: Transaction[]): string[] {
         const categories = new Set<string>();
+        
         transactions.forEach(transaction => {
-            if (transaction.category) {
-                categories.add(transaction.category);
+            if (transaction.category && transaction.category.trim()) {
+                categories.add(transaction.category.trim());
             }
         });
+        
+        // Always include an "Other" category for handling miscellaneous transactions
+        categories.add('other');
+        
         return Array.from(categories).sort();
+    }
+
+    /**
+     * Get category spending summary with enhanced edge case handling
+     */
+    static getCategorySpendingSummaryEnhanced(
+        transactions: Transaction[],
+        period: BudgetPeriod,
+        omittedCategories: Set<string> = new Set()
+    ): Map<string, { amount: number; count: number; transactions: Transaction[] }> {
+        const spendingMap = new Map<string, { amount: number; count: number; transactions: Transaction[] }>();
+
+        transactions
+            .filter(transaction => 
+                this.isTransactionInPeriod(transaction, period) &&
+                transaction.amount < 0 &&
+                transaction.include_in_spending
+            )
+            .forEach(transaction => {
+                let category = transaction.category?.trim() || 'other';
+                
+                // Handle omitted categories by grouping into "other"
+                if (omittedCategories.has(category)) {
+                    category = 'other';
+                }
+                
+                const current = spendingMap.get(category) || { amount: 0, count: 0, transactions: [] };
+                spendingMap.set(category, {
+                    amount: current.amount + Math.abs(transaction.amount),
+                    count: current.count + 1,
+                    transactions: [...current.transactions, transaction]
+                });
+            });
+
+        return spendingMap;
     }
 
     /**
@@ -334,6 +374,62 @@ export class BudgetCalculationService {
         const suggested = Math.round(average * 1.2);
 
         return { suggested, average, min, max };
+    }
+
+    /**
+     * Generate category-based chart data for Sankey diagram
+     */
+    static generateCategoryChartData(
+        transactions: Transaction[],
+        accounts: { id: string; description: string }[],
+        period: BudgetPeriod,
+        omittedCategories: Set<string> = new Set(),
+        minAmount: number = 0
+    ): { nodes: { id: string; description: string }[]; links: { source: string; target: string; value: number }[] } {
+        const nodes = new Map<string, { id: string; description: string }>();
+        const links = new Map<string, { source: string; target: string; value: number }>();
+
+        // Add account nodes
+        accounts.forEach(account => {
+            nodes.set(account.id, { id: account.id, description: account.description });
+        });
+
+        // Get category spending data
+        const categorySpending = this.getCategorySpendingSummaryEnhanced(transactions, period, omittedCategories);
+
+        // Add category nodes and links
+        categorySpending.forEach((data, category) => {
+            if (data.amount >= minAmount) {
+                // Capitalize category name for display
+                const categoryDisplay = category === 'other' ? 'Other' : 
+                    category.charAt(0).toUpperCase() + category.slice(1);
+                
+                nodes.set(category, { id: category, description: categoryDisplay });
+
+                // Create links from accounts to categories based on transaction amounts
+                const accountTotals = new Map<string, number>();
+                
+                data.transactions.forEach(transaction => {
+                    const currentAmount = accountTotals.get(transaction.account_id) || 0;
+                    accountTotals.set(transaction.account_id, currentAmount + Math.abs(transaction.amount));
+                });
+
+                // Create links for each account
+                accountTotals.forEach((amount, accountId) => {
+                    const linkKey = `${accountId}:${category}`;
+                    links.set(linkKey, {
+                        source: accountId,
+                        target: category,
+                        value: amount
+                    });
+                });
+            }
+        });
+
+        return {
+            nodes: Array.from(nodes.values()),
+            links: Array.from(links.values())
+        };
     }
 
     /**
