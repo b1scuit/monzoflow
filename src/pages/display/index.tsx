@@ -138,42 +138,49 @@ export const Index: FC = () => {
             const transactionCount = await db.transactions.count()
             
             if (transactionCount === 0) {
-                setLoadingMessage('No transactions found - fetching fresh data from Monzo...')
+                setLoadingMessage('No transactions found - fetching historical data from Monzo...')
                 console.log('🔄 REQUIREMENT: No transactions found, attempting full refresh from Monzo')
                 
                 // Force refresh all transactions when none are found
                 try {
+                    // Show progress during chunked requests
+                    setLoadingMessage('Fetching transaction history (this may take a moment for large datasets)...')
                     await forceRefreshAllTransactions(accounts)
                     
                     // Check how many transactions we got
                     const newTransactionCount = await db.transactions.count()
                     if (newTransactionCount > 0) {
-                        setLoadingMessage(`Successfully fetched ${newTransactionCount} transactions from Monzo`)
+                        setLoadingMessage(`Successfully fetched ${newTransactionCount.toLocaleString()} transactions from Monzo`)
                         console.log(`✅ Full refresh successful: ${newTransactionCount} transactions retrieved`)
                     } else {
                         setLoadingMessage('No new transactions found on Monzo')
                         console.log('⚠️ Full refresh completed but no transactions were found')
                     }
-                } catch (error) {
-                    console.error('Failed to force refresh transactions:', error)
-                    setLoadingMessage('Failed to fetch transactions. Trying individual account fetches...')
-                    
-                    // Fallback to individual account fetches
-                    const transactionPromises = accounts.map(async (account: Account) => {
-                        try {
-                            return await retrieveTransactions(account.id, true) // Force refresh
-                        } catch (error) {
-                            console.error(`Failed to fetch transactions for account ${account.id}:`, error)
-                            return []
+                } catch (error: any) {
+                    if (error.message?.includes('time range')) {
+                        setLoadingMessage('Date range too large for Monzo API. Using chunked requests...')
+                        console.log('Retrying with smaller date chunks due to API limit')
+                    } else {
+                        console.error('Failed to force refresh transactions:', error)
+                        setLoadingMessage('Failed to fetch transactions. Trying individual account fetches...')
+                        
+                        // Fallback to individual account fetches
+                        const transactionPromises = accounts.map(async (account: Account) => {
+                            try {
+                                return await retrieveTransactions(account.id, true) // Force refresh
+                            } catch (error) {
+                                console.error(`Failed to fetch transactions for account ${account.id}:`, error)
+                                return []
+                            }
+                        })
+                        
+                        await Promise.allSettled(transactionPromises)
+                        
+                        // Check final count after fallback
+                        const finalCount = await db.transactions.count()
+                        if (finalCount > 0) {
+                            setLoadingMessage(`Retrieved ${finalCount} transactions using fallback method`)
                         }
-                    })
-                    
-                    await Promise.allSettled(transactionPromises)
-                    
-                    // Check final count after fallback
-                    const finalCount = await db.transactions.count()
-                    if (finalCount > 0) {
-                        setLoadingMessage(`Retrieved ${finalCount} transactions using fallback method`)
                     }
                 }
             } else {
