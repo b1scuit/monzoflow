@@ -59,54 +59,87 @@ export const Index: FC = () => {
     let [activeView, setActiveView] = useState<'overview' | 'insights' | 'trends' | 'sankey'>('overview')
 
     const [loading, setLoading] = useState<boolean>(true)
+    const [loadingMessage, setLoadingMessage] = useState<string>('Initializing...')
     const db = useDatabase();
     const { retrieveAccounts } = useAccounts();
-    const { retrieveTransactions } = useTransactions();
+    const { retrieveTransactions, loading: transactionLoading } = useTransactions();
     
     // Live queries for real-time updates
     const budgets = useLiveQuery(() => db.budgets.toArray());
     const debts = useLiveQuery(() => db.debts.where('status').equals('active').toArray());
 
 
-    // Logic: 
-    // Count transactions,if more than zero just return those
-    // if not, retrieve accounts from the Monzo API and populate the table, then return them
-    // From there use the accounts to get and store transactions
-    // from there set the transactions into the current state
-    // Resolve loading
-    const setupFunction = () => {
-        db.accounts.count()
-        .then((count: number) => {
-            return count
-        })
-        .then((count: number) =>{
-            if (count == 0) {
-                return retrieveAccounts().then(() => db.accounts.toArray())
+    // Enhanced setup function with proper loading state management
+    const setupFunction = async () => {
+        try {
+            setLoadingMessage('Checking local accounts...')
+            
+            // Check if we have accounts locally
+            const accountCount = await db.accounts.count()
+            let accounts: Account[] = []
+            
+            if (accountCount === 0) {
+                setLoadingMessage('Fetching accounts from Monzo...')
+                await retrieveAccounts()
+                accounts = await db.accounts.toArray()
+            } else {
+                accounts = await db.accounts.toArray()
             }
-
-            return db.accounts.toArray()
-        })
-        .then((accounts: Account[]) => {
+            
+            // Set up nodes for accounts
             accounts.forEach((acc: Account) => nodes.set(acc.id, {id: acc.id, description:renderName(acc)}))
-            return accounts
-        })
-        // Count transactions and if there are none, go get them
-        .then((accounts: Account[]) => {
-            return db.transactions.count().then((count) => {
-                if (count === 0 ) return Promise.all(accounts.map<Promise<Transaction[]>>((account: Account) =>retrieveTransactions(account.id) ))
-            })
-        })
-        // Retrieve transactions and accounts from DB
-        .then(() => Promise.all([
-            db.transactions.toArray(),
-            db.accounts.toArray()
-        ]))
-        // Store all data for analytics
-        .then(([transactions, accounts]: [Transaction[], Account[]]) => {
+            
+            // Check if we have transactions locally
+            setLoadingMessage('Checking local transactions...')
+            const transactionCount = await db.transactions.count()
+            
+            if (transactionCount === 0) {
+                setLoadingMessage('Fetching transactions from Monzo...')
+                
+                // Wait for all transaction fetches to complete
+                const transactionPromises = accounts.map(async (account: Account) => {
+                    try {
+                        return await retrieveTransactions(account.id)
+                    } catch (error) {
+                        console.error(`Failed to fetch transactions for account ${account.id}:`, error)
+                        return []
+                    }
+                })
+                
+                await Promise.allSettled(transactionPromises)
+            }
+            
+            // Wait for any ongoing transaction loading to complete
+            if (transactionLoading) {
+                setLoadingMessage('Finalizing transaction data...')
+                // Small delay to ensure all async operations complete
+                await new Promise(resolve => setTimeout(resolve, 1000))
+            }
+            
+            setLoadingMessage('Loading analytics data...')
+            
+            // Retrieve final data from database
+            const [transactions, finalAccounts] = await Promise.all([
+                db.transactions.toArray(),
+                db.accounts.toArray()
+            ])
+            
+            // Store all data for analytics
             setAllTransactions(transactions)
-            setAllAccounts(accounts)
-            return { transactions, accounts }
-        }).finally(() => setLoading(false))
+            setAllAccounts(finalAccounts)
+            
+            // Set last sign in timestamp for throttling
+            localStorage.setItem('lastSignIn', Date.now().toString())
+            
+            setLoadingMessage('Complete!')
+            
+        } catch (error) {
+            console.error('Setup failed:', error)
+            setLoadingMessage('Error loading data. Please try refreshing.')
+        } finally {
+            // Only set loading to false when everything is truly complete
+            setTimeout(() => setLoading(false), 500)
+        }
     }
 
 
@@ -167,7 +200,15 @@ export const Index: FC = () => {
                 <div className="text-center">
                     <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto mb-4"></div>
                     <h2 className="text-xl font-semibold text-gray-900">Loading your financial data...</h2>
-                    <p className="text-gray-600 mt-2">Analyzing transactions and generating insights</p>
+                    <p className="text-gray-600 mt-2">{loadingMessage}</p>
+                    {transactionLoading && (
+                        <div className="mt-4">
+                            <div className="w-64 bg-gray-200 rounded-full h-2 mx-auto">
+                                <div className="bg-blue-500 h-2 rounded-full animate-pulse" style={{width: '60%'}}></div>
+                            </div>
+                            <p className="text-sm text-gray-500 mt-2">Fetching transactions...</p>
+                        </div>
+                    )}
                 </div>
             </div>
         )
