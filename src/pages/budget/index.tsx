@@ -7,14 +7,22 @@ import { BudgetCategoryManager } from 'components/Budget/BudgetCategoryManager';
 import { useDatabase } from 'components/DatabaseContext/DatabaseContext';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { Budget } from 'types/Budget';
+import { BudgetCalculationService } from 'services/BudgetCalculationService';
 
 const BudgetPage: FC = () => {
     const [activeTab, setActiveTab] = useState<'overview' | 'categories' | 'debt' | 'bills' | 'yearly'>('overview');
     const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
     const [showCreateBudgetModal, setShowCreateBudgetModal] = useState(false);
+    const [showAutoSetupModal, setShowAutoSetupModal] = useState(false);
     const [newBudgetForm, setNewBudgetForm] = useState({
         name: '',
-        description: ''
+        description: '',
+        autoGenerateCategories: true
+    });
+    const [autoSetupOptions, setAutoSetupOptions] = useState({
+        monthsToAnalyze: 6,
+        bufferPercentage: 20,
+        includeSmallCategories: false
     });
     const db = useDatabase();
 
@@ -23,6 +31,9 @@ const BudgetPage: FC = () => {
         () => db.budgets.where('year').equals(selectedYear).first(),
         [selectedYear]
     );
+
+    // Get transactions for auto-generation
+    const transactions = useLiveQuery(() => db.transactions.toArray(), []);
 
     const tabs = [
         { key: 'overview', label: 'Budget Overview', icon: '📊' },
@@ -38,7 +49,25 @@ const BudgetPage: FC = () => {
                 return <BudgetOverview year={selectedYear} onCreateBudget={() => setShowCreateBudgetModal(true)} />;
             case 'categories':
                 return selectedBudget ? (
-                    <BudgetCategoryManager budget={selectedBudget} />
+                    <div className="space-y-6">
+                        <div className="bg-white shadow rounded-lg p-6">
+                            <div className="flex justify-between items-center mb-4">
+                                <h3 className="text-lg font-semibold text-gray-900">Quick Budget Setup</h3>
+                                <button
+                                    onClick={handleGenerateCategoriesForExistingBudget}
+                                    disabled={!transactions || transactions.length === 0}
+                                    className="bg-green-500 text-white px-4 py-2 rounded-md hover:bg-green-600 disabled:opacity-50 disabled:cursor-not-allowed flex items-center space-x-2"
+                                >
+                                    <span>🪄</span>
+                                    <span>Auto-Generate Categories</span>
+                                </button>
+                            </div>
+                            <p className="text-gray-600 text-sm">
+                                Automatically create budget categories based on your transaction history with smart spending suggestions.
+                            </p>
+                        </div>
+                        <BudgetCategoryManager budget={selectedBudget} />
+                    </div>
                 ) : (
                     <div className="bg-white shadow rounded-lg p-6 text-center">
                         <p className="text-gray-500 mb-4">No budget found for {selectedYear}</p>
@@ -87,15 +116,53 @@ const BudgetPage: FC = () => {
             };
 
             await db.budgets.add(newBudget);
+
+            // Auto-generate categories if enabled
+            if (newBudgetForm.autoGenerateCategories && transactions && transactions.length > 0) {
+                const budgetSetup = BudgetCalculationService.generateCompleteBudgetSetup(
+                    newBudget.id,
+                    transactions,
+                    autoSetupOptions
+                );
+
+                // Add generated categories to database
+                for (const category of budgetSetup.categories) {
+                    await db.budgetCategories.add(category);
+                }
+
+                // Show summary of what was created
+                setShowAutoSetupModal(true);
+            }
             
             // Reset form and close modal
-            setNewBudgetForm({ name: '', description: '' });
+            setNewBudgetForm({ name: '', description: '', autoGenerateCategories: true });
             setShowCreateBudgetModal(false);
             
-            // Switch to categories tab to start adding categories
+            // Switch to categories tab to view/manage categories
             setActiveTab('categories');
         } catch (error) {
             console.error('Error creating budget:', error);
+        }
+    };
+
+    const handleGenerateCategoriesForExistingBudget = async () => {
+        if (!selectedBudget || !transactions) return;
+
+        try {
+            const budgetSetup = BudgetCalculationService.generateCompleteBudgetSetup(
+                selectedBudget.id,
+                transactions,
+                autoSetupOptions
+            );
+
+            // Add generated categories to database
+            for (const category of budgetSetup.categories) {
+                await db.budgetCategories.add(category);
+            }
+
+            setShowAutoSetupModal(true);
+        } catch (error) {
+            console.error('Error generating categories:', error);
         }
     };
 
@@ -225,13 +292,41 @@ const BudgetPage: FC = () => {
                                 />
                             </div>
 
+                            <div>
+                                <label className="flex items-center">
+                                    <input
+                                        type="checkbox"
+                                        checked={newBudgetForm.autoGenerateCategories}
+                                        onChange={(e) => setNewBudgetForm(prev => ({ 
+                                            ...prev, 
+                                            autoGenerateCategories: e.target.checked 
+                                        }))}
+                                        className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                                    />
+                                    <span className="ml-2 text-sm text-gray-700">
+                                        Auto-generate budget categories from transaction history
+                                    </span>
+                                </label>
+                                {newBudgetForm.autoGenerateCategories && (
+                                    <p className="text-xs text-green-600 mt-1">
+                                        ✨ Categories will be created automatically with smart spending suggestions
+                                    </p>
+                                )}
+                            </div>
+
                             <div className="bg-blue-50 border border-blue-200 rounded-md p-3">
                                 <p className="text-sm text-blue-700">
                                     <strong>Year:</strong> {selectedYear}
                                 </p>
-                                <p className="text-xs text-blue-600 mt-1">
-                                    After creating the budget, you can add categories to track your spending.
-                                </p>
+                                {newBudgetForm.autoGenerateCategories ? (
+                                    <p className="text-xs text-blue-600 mt-1">
+                                        Categories will be created automatically based on your spending patterns.
+                                    </p>
+                                ) : (
+                                    <p className="text-xs text-blue-600 mt-1">
+                                        After creating the budget, you can add categories manually.
+                                    </p>
+                                )}
                             </div>
                         </div>
 
@@ -239,7 +334,7 @@ const BudgetPage: FC = () => {
                             <button
                                 onClick={() => {
                                     setShowCreateBudgetModal(false);
-                                    setNewBudgetForm({ name: '', description: '' });
+                                    setNewBudgetForm({ name: '', description: '', autoGenerateCategories: true });
                                 }}
                                 className="px-4 py-2 text-gray-600 hover:text-gray-800"
                             >
@@ -250,7 +345,56 @@ const BudgetPage: FC = () => {
                                 disabled={!newBudgetForm.name.trim()}
                                 className="bg-blue-500 text-white px-4 py-2 rounded-md hover:bg-blue-600 disabled:opacity-50"
                             >
-                                Create Budget
+                                {newBudgetForm.autoGenerateCategories ? 'Create Budget & Generate Categories' : 'Create Budget'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Auto Setup Summary Modal */}
+            {showAutoSetupModal && transactions && (
+                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+                    <div className="bg-white rounded-lg p-6 w-full max-w-lg mx-4">
+                        <div className="flex items-center space-x-3 mb-4">
+                            <div className="w-10 h-10 bg-green-100 rounded-full flex items-center justify-center">
+                                <span className="text-green-600 text-xl">✅</span>
+                            </div>
+                            <h3 className="text-lg font-semibold text-gray-900">Budget Categories Created!</h3>
+                        </div>
+                        
+                        <div className="space-y-4">
+                            <p className="text-gray-600">
+                                Your budget categories have been automatically generated based on your transaction history.
+                            </p>
+
+                            <div className="bg-gray-50 rounded-lg p-4">
+                                <h4 className="font-medium text-gray-900 mb-2">Summary:</h4>
+                                <div className="space-y-1 text-sm text-gray-600">
+                                    <p>• Analysis period: Last {autoSetupOptions.monthsToAnalyze} months</p>
+                                    <p>• Transaction data: {transactions.length.toLocaleString()} transactions analyzed</p>
+                                    <p>• Budget buffer: {autoSetupOptions.bufferPercentage}% added to suggestions</p>
+                                </div>
+                            </div>
+
+                            <div className="bg-blue-50 border border-blue-200 rounded-md p-3">
+                                <p className="text-sm text-blue-700">
+                                    💡 <strong>Next steps:</strong>
+                                </p>
+                                <ul className="text-xs text-blue-600 mt-1 list-disc list-inside space-y-1">
+                                    <li>Review and adjust category amounts as needed</li>
+                                    <li>Categories automatically track spending from your transactions</li>
+                                    <li>Add, edit, or remove categories anytime</li>
+                                </ul>
+                            </div>
+                        </div>
+
+                        <div className="flex justify-end gap-3 mt-6">
+                            <button
+                                onClick={() => setShowAutoSetupModal(false)}
+                                className="bg-blue-500 text-white px-4 py-2 rounded-md hover:bg-blue-600"
+                            >
+                                View My Budget Categories
                             </button>
                         </div>
                     </div>

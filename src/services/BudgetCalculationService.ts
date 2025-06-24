@@ -433,6 +433,154 @@ export class BudgetCalculationService {
     }
 
     /**
+     * Auto-generate budget categories from transaction data with smart suggestions
+     */
+    static autoGenerateBudgetCategories(
+        budgetId: string,
+        transactions: Transaction[],
+        monthsToAnalyze: number = 6,
+        minSpendingThreshold: number = 1000 // Minimum £10 spending to include category
+    ): BudgetCategory[] {
+        const categories: BudgetCategory[] = [];
+        const categorySpending = this.getCategorySpendingSummaryEnhanced(
+            transactions,
+            {
+                start: new Date(new Date().getFullYear(), new Date().getMonth() - monthsToAnalyze, 1),
+                end: new Date(),
+                type: 'custom'
+            }
+        );
+
+        // Predefined colors for categories
+        const colors = [
+            '#3B82F6', // Blue
+            '#EF4444', // Red  
+            '#10B981', // Green
+            '#F59E0B', // Yellow
+            '#8B5CF6', // Purple
+            '#F97316', // Orange
+            '#06B6D4', // Cyan
+            '#84CC16', // Lime
+            '#EC4899', // Pink
+            '#6B7280', // Gray
+        ];
+
+        let colorIndex = 0;
+
+        categorySpending.forEach((spendingData, category) => {
+            // Only include categories with meaningful spending
+            if (spendingData.amount >= minSpendingThreshold) {
+                const suggestions = this.getSuggestedBudgetAmounts(transactions, category, monthsToAnalyze);
+                const categoryName = this.formatCategoryName(category);
+
+                const budgetCategory: BudgetCategory = {
+                    id: typeof crypto !== 'undefined' && crypto.randomUUID ? 
+                        crypto.randomUUID() : 
+                        'cat-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9),
+                    name: categoryName,
+                    budgetId,
+                    allocatedAmount: suggestions.suggested,
+                    spentAmount: 0, // Will be calculated on first refresh
+                    category,
+                    color: colors[colorIndex % colors.length],
+                    created: new Date().toISOString(),
+                    updated: new Date().toISOString()
+                };
+
+                categories.push(budgetCategory);
+                colorIndex++;
+            }
+        });
+
+        // Sort by spending amount (highest first) for better user experience
+        return categories.sort((a, b) => {
+            const aSpending = categorySpending.get(a.category)?.amount || 0;
+            const bSpending = categorySpending.get(b.category)?.amount || 0;
+            return bSpending - aSpending;
+        });
+    }
+
+    /**
+     * Format category name for display
+     */
+    static formatCategoryName(category: string): string {
+        if (category === 'other') {
+            return 'Other & Miscellaneous';
+        }
+
+        // Handle special cases and provide better names
+        const specialNames: Record<string, string> = {
+            'shopping': 'Shopping & Groceries',
+            'transport': 'Transport & Travel',
+            'entertainment': 'Entertainment & Dining',
+            'bills': 'Bills & Utilities',
+            'general': 'General Expenses',
+            'expenses': 'General Expenses',
+            'transfers': 'Transfers & Savings'
+        };
+
+        return specialNames[category] || 
+               category.charAt(0).toUpperCase() + category.slice(1).replace(/[-_]/g, ' ');
+    }
+
+    /**
+     * Generate comprehensive budget setup from transactions
+     */
+    static generateCompleteBudgetSetup(
+        budgetId: string,
+        transactions: Transaction[],
+        options: {
+            monthsToAnalyze?: number;
+            minSpendingThreshold?: number;
+            includeSmallCategories?: boolean;
+            bufferPercentage?: number;
+        } = {}
+    ): {
+        categories: BudgetCategory[];
+        summary: {
+            totalSuggested: number;
+            categoriesCreated: number;
+            monthsAnalyzed: number;
+            dataSource: string;
+        };
+    } {
+        const {
+            monthsToAnalyze = 6,
+            minSpendingThreshold = 1000,
+            includeSmallCategories = false,
+            bufferPercentage = 20
+        } = options;
+
+        // Generate main categories
+        const categories = this.autoGenerateBudgetCategories(
+            budgetId,
+            transactions,
+            monthsToAnalyze,
+            includeSmallCategories ? 100 : minSpendingThreshold
+        );
+
+        // Adjust amounts with custom buffer
+        if (bufferPercentage !== 20) {
+            categories.forEach(category => {
+                const originalSuggestion = category.allocatedAmount / 1.2; // Remove default 20% buffer
+                category.allocatedAmount = Math.round(originalSuggestion * (1 + bufferPercentage / 100));
+            });
+        }
+
+        const totalSuggested = categories.reduce((sum, cat) => sum + cat.allocatedAmount, 0);
+
+        return {
+            categories,
+            summary: {
+                totalSuggested,
+                categoriesCreated: categories.length,
+                monthsAnalyzed: monthsToAnalyze,
+                dataSource: `${transactions.length} transactions`
+            }
+        };
+    }
+
+    /**
      * Validate budget category mappings
      */
     static validateCategoryMappings(mappings: CategoryMappingRule[]): string[] {

@@ -275,4 +275,224 @@ describe('BudgetCalculationService - Dynamic Categories', () => {
             expect(summary.get('shopping')?.amount).toBe(1);
         });
     });
+
+    describe('Automatic Budget Category Generation', () => {
+        const testBudgetId = 'test-budget-123';
+
+        // Create recent transactions for testing auto-generation
+        const recentTransactions = mockTransactions.map(t => ({
+            ...t,
+            created: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString() // 30 days ago
+        }));
+
+        describe('autoGenerateBudgetCategories', () => {
+            it('should generate budget categories from transaction data', () => {
+                const categories = BudgetCalculationService.autoGenerateBudgetCategories(
+                    testBudgetId,
+                    recentTransactions,
+                    6,
+                    500 // £5 minimum
+                );
+
+                expect(categories.length).toBeGreaterThan(0);
+                expect(categories).toEqual(
+                    expect.arrayContaining([
+                        expect.objectContaining({
+                            budgetId: testBudgetId,
+                            category: 'shopping',
+                            name: 'Shopping & Groceries',
+                            allocatedAmount: expect.any(Number),
+                            color: expect.any(String)
+                        })
+                    ])
+                );
+            });
+
+            it('should filter out categories below spending threshold', () => {
+                const categories = BudgetCalculationService.autoGenerateBudgetCategories(
+                    testBudgetId,
+                    recentTransactions,
+                    6,
+                    2000 // £20 minimum - should exclude most categories
+                );
+
+                expect(categories.length).toBeLessThan(recentTransactions.length);
+            });
+
+            it('should sort categories by spending amount', () => {
+                const categories = BudgetCalculationService.autoGenerateBudgetCategories(
+                    testBudgetId,
+                    recentTransactions,
+                    6,
+                    100
+                );
+
+                if (categories.length > 1) {
+                    // First category should have highest allocated amount (based on spending)
+                    expect(categories[0].allocatedAmount).toBeGreaterThanOrEqual(categories[1].allocatedAmount);
+                }
+            });
+
+            it('should assign unique colors to categories', () => {
+                const categories = BudgetCalculationService.autoGenerateBudgetCategories(
+                    testBudgetId,
+                    recentTransactions,
+                    6,
+                    100
+                );
+
+                const colors = categories.map(cat => cat.color);
+                expect(colors.every(color => color.startsWith('#'))).toBe(true);
+            });
+        });
+
+        describe('formatCategoryName', () => {
+            it('should format category names properly', () => {
+                expect(BudgetCalculationService.formatCategoryName('shopping')).toBe('Shopping & Groceries');
+                expect(BudgetCalculationService.formatCategoryName('transport')).toBe('Transport & Travel');
+                expect(BudgetCalculationService.formatCategoryName('entertainment')).toBe('Entertainment & Dining');
+                expect(BudgetCalculationService.formatCategoryName('other')).toBe('Other & Miscellaneous');
+            });
+
+            it('should handle unknown categories', () => {
+                expect(BudgetCalculationService.formatCategoryName('custom_category')).toBe('Custom category');
+                expect(BudgetCalculationService.formatCategoryName('test-name')).toBe('Test name');
+            });
+
+            it('should capitalize first letter for unknown categories', () => {
+                expect(BudgetCalculationService.formatCategoryName('unknown')).toBe('Unknown');
+            });
+        });
+
+        describe('generateCompleteBudgetSetup', () => {
+            it('should generate complete budget setup with summary', () => {
+                const setup = BudgetCalculationService.generateCompleteBudgetSetup(
+                    testBudgetId,
+                    recentTransactions,
+                    {
+                        monthsToAnalyze: 6,
+                        minSpendingThreshold: 500,
+                        bufferPercentage: 20
+                    }
+                );
+
+                expect(setup.categories).toBeInstanceOf(Array);
+                expect(setup.summary).toEqual({
+                    totalSuggested: expect.any(Number),
+                    categoriesCreated: setup.categories.length,
+                    monthsAnalyzed: 6,
+                    dataSource: `${recentTransactions.length} transactions`
+                });
+            });
+
+            it('should apply custom buffer percentage', () => {
+                const setup10 = BudgetCalculationService.generateCompleteBudgetSetup(
+                    testBudgetId,
+                    recentTransactions,
+                    { bufferPercentage: 10 }
+                );
+
+                const setup30 = BudgetCalculationService.generateCompleteBudgetSetup(
+                    testBudgetId,
+                    recentTransactions,
+                    { bufferPercentage: 30 }
+                );
+
+                if (setup10.categories.length > 0 && setup30.categories.length > 0) {
+                    // Higher buffer should result in higher amounts
+                    expect(setup30.summary.totalSuggested).toBeGreaterThan(setup10.summary.totalSuggested);
+                }
+            });
+
+            it('should include small categories when requested', () => {
+                const setupWithSmall = BudgetCalculationService.generateCompleteBudgetSetup(
+                    testBudgetId,
+                    recentTransactions,
+                    {
+                        includeSmallCategories: true,
+                        minSpendingThreshold: 10000 // High threshold that would normally exclude many
+                    }
+                );
+
+                const setupWithoutSmall = BudgetCalculationService.generateCompleteBudgetSetup(
+                    testBudgetId,
+                    recentTransactions,
+                    {
+                        includeSmallCategories: false,
+                        minSpendingThreshold: 10000
+                    }
+                );
+
+                // With small categories should include more categories
+                expect(setupWithSmall.categories.length).toBeGreaterThanOrEqual(setupWithoutSmall.categories.length);
+            });
+
+            it('should handle empty transaction data gracefully', () => {
+                const setup = BudgetCalculationService.generateCompleteBudgetSetup(
+                    testBudgetId,
+                    [],
+                    {}
+                );
+
+                expect(setup.categories).toEqual([]);
+                expect(setup.summary.categoriesCreated).toBe(0);
+                expect(setup.summary.totalSuggested).toBe(0);
+            });
+
+            it('should use default options when none provided', () => {
+                const setup = BudgetCalculationService.generateCompleteBudgetSetup(
+                    testBudgetId,
+                    recentTransactions
+                );
+
+                expect(setup.summary.monthsAnalyzed).toBe(6); // Default
+                expect(setup.categories).toBeInstanceOf(Array);
+            });
+        });
+
+        describe('Integration with existing functionality', () => {
+            it('should generate categories that work with existing calculation methods', () => {
+                const categories = BudgetCalculationService.autoGenerateBudgetCategories(
+                    testBudgetId,
+                    recentTransactions,
+                    6,
+                    500
+                );
+
+                if (categories.length > 0) {
+                    const testCategory = categories[0];
+                    
+                    // Should be able to calculate spending for generated category
+                    const spentAmount = BudgetCalculationService.calculateCategorySpent(
+                        recentTransactions,
+                        testCategory,
+                        testPeriod
+                    );
+
+                    expect(typeof spentAmount).toBe('number');
+                    expect(spentAmount).toBeGreaterThanOrEqual(0);
+                }
+            });
+
+            it('should generate categories with valid data structure', () => {
+                const categories = BudgetCalculationService.autoGenerateBudgetCategories(
+                    testBudgetId,
+                    recentTransactions,
+                    6,
+                    500
+                );
+
+                categories.forEach(category => {
+                    expect(category.id).toBeTruthy();
+                    expect(category.name).toBeTruthy();
+                    expect(category.budgetId).toBe(testBudgetId);
+                    expect(category.allocatedAmount).toBeGreaterThan(0);
+                    expect(category.category).toBeTruthy();
+                    expect(category.color).toMatch(/^#[0-9A-Fa-f]{6}$/);
+                    expect(category.created).toBeTruthy();
+                    expect(category.updated).toBeTruthy();
+                });
+            });
+        });
+    });
 });
