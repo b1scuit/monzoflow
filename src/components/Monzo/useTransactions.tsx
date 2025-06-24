@@ -73,16 +73,21 @@ export const useTransactions = () => {
         }
     }
 
-    const retrieveTransactions = async (account_id: string): Promise<Transaction[] | undefined> => {
-        // Throttling checks
-        if (wasRecentlySignedIn()) {
-            console.log('Skipping transaction pull - user signed in recently')
-            return
-        }
-        
-        if (wasRecentlyPulled(account_id)) {
-            console.log('Skipping transaction pull - transactions pulled recently for account:', account_id)
-            return
+    const retrieveTransactions = async (account_id: string, forceRefresh: boolean = false): Promise<Transaction[] | undefined> => {
+        // Skip throttling checks if forcing refresh
+        if (!forceRefresh) {
+            // Throttling checks
+            if (wasRecentlySignedIn()) {
+                console.log('Skipping transaction pull - user signed in recently')
+                return
+            }
+            
+            if (wasRecentlyPulled(account_id)) {
+                console.log('Skipping transaction pull - transactions pulled recently for account:', account_id)
+                return
+            }
+        } else {
+            console.log('Force refresh enabled - bypassing throttling for account:', account_id)
         }
 
         // Token validation for old transactions
@@ -110,8 +115,34 @@ export const useTransactions = () => {
         }
     }
 
+    // Helper function to force refresh all transactions for all accounts
+    const forceRefreshAllTransactions = async (accounts: any[]): Promise<void> => {
+        console.log('Force refreshing transactions for all accounts...')
+        
+        // Clear existing transaction pull timestamps to allow fresh pulls
+        Object.keys(localStorage).forEach(key => {
+            if (key.startsWith('lastTransactionPull_')) {
+                localStorage.removeItem(key)
+            }
+        })
+        
+        // Force pull transactions for all accounts
+        const refreshPromises = accounts.map(async (account) => {
+            try {
+                return await retrieveTransactions(account.id, true)
+            } catch (error) {
+                console.error(`Failed to force refresh transactions for account ${account.id}:`, error)
+                return []
+            }
+        })
+        
+        await Promise.allSettled(refreshPromises)
+        console.log('Force refresh completed for all accounts')
+    }
+
     return {
         retrieveTransactions,
+        forceRefreshAllTransactions,
         loading,
         error,
         isTokenStale

@@ -23,12 +23,13 @@ const Settings: FC = () => {
     const [storageInfo, setStorageInfo] = useState<StorageInfo | null>(null);
     const [tokenInfo, setTokenInfo] = useState<TokenInfo | null>(null);
     const [isResetting, setIsResetting] = useState(false);
+    const [isRefreshing, setIsRefreshing] = useState(false);
     const [showConfirmReset, setShowConfirmReset] = useState(false);
     const [resetType, setResetType] = useState<'database' | 'all' | null>(null);
     const [lastUpdated, setLastUpdated] = useState<string>('');
     
     const db = useDatabase();
-    const { isTokenStale } = useTransactions();
+    const { isTokenStale, forceRefreshAllTransactions } = useTransactions();
     
     // Live queries to get current data counts
     const accounts = useLiveQuery(() => db.accounts.toArray());
@@ -157,6 +158,26 @@ const Settings: FC = () => {
         setTokenInfo(prev => prev ? { ...prev, lastSignIn: null, tokenAge: 'Unknown' } : null);
     };
 
+    const handleForceRefresh = async () => {
+        if (!accounts || accounts.length === 0) {
+            alert('No accounts found. Please ensure you are authenticated.');
+            return;
+        }
+
+        setIsRefreshing(true);
+        try {
+            await forceRefreshAllTransactions(accounts);
+            alert('Transaction data refreshed successfully!');
+            
+            // Update the last updated timestamp
+            setLastUpdated(new Date().toLocaleString());
+        } catch (error) {
+            console.error('Failed to refresh transactions:', error);
+            alert('Failed to refresh transaction data. Please try again.');
+        }
+        setIsRefreshing(false);
+    };
+
     const confirmReset = (type: 'database' | 'all') => {
         setResetType(type);
         setShowConfirmReset(true);
@@ -269,6 +290,20 @@ const Settings: FC = () => {
                     </h2>
                     
                     <div className="space-y-4">
+                        <div className="flex items-center justify-between p-4 border rounded-lg border-green-200 bg-green-50">
+                            <div>
+                                <h3 className="font-medium text-gray-900">Force Refresh Transactions</h3>
+                                <p className="text-sm text-gray-600">Pull fresh transaction data from Monzo for all accounts</p>
+                            </div>
+                            <button
+                                onClick={handleForceRefresh}
+                                disabled={isRefreshing}
+                                className="bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded-lg transition-colors disabled:opacity-50"
+                            >
+                                {isRefreshing ? 'Refreshing...' : 'Force Refresh'}
+                            </button>
+                        </div>
+
                         <div className="flex items-center justify-between p-4 border rounded-lg">
                             <div>
                                 <h3 className="font-medium text-gray-900">Clear Cache</h3>

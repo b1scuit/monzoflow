@@ -62,11 +62,30 @@ export const Index: FC = () => {
     const [loadingMessage, setLoadingMessage] = useState<string>('Initializing...')
     const db = useDatabase();
     const { retrieveAccounts } = useAccounts();
-    const { retrieveTransactions, loading: transactionLoading } = useTransactions();
+    const { retrieveTransactions, forceRefreshAllTransactions, loading: transactionLoading } = useTransactions();
     
     // Live queries for real-time updates
     const budgets = useLiveQuery(() => db.budgets.toArray());
     const debts = useLiveQuery(() => db.debts.where('status').equals('active').toArray());
+
+    // Helper function to check if we should refresh transaction data
+    const checkIfRefreshNeeded = async (accounts: Account[]): Promise<boolean> => {
+        // Check if any account hasn't been pulled recently
+        const now = Date.now()
+        const oneHourAgo = now - (60 * 60 * 1000) // 1 hour threshold for refresh
+        
+        for (const account of accounts) {
+            const lastPullKey = `lastTransactionPull_${account.id}`
+            const lastPull = localStorage.getItem(lastPullKey)
+            
+            if (!lastPull || parseInt(lastPull) < oneHourAgo) {
+                console.log(`Account ${account.id} needs refresh - last pull: ${lastPull ? new Date(parseInt(lastPull)).toLocaleString() : 'never'}`)
+                return true
+            }
+        }
+        
+        return false
+    }
 
 
     // Enhanced setup function with proper loading state management
@@ -119,19 +138,60 @@ export const Index: FC = () => {
             const transactionCount = await db.transactions.count()
             
             if (transactionCount === 0) {
-                setLoadingMessage('Fetching transactions from Monzo...')
+                setLoadingMessage('No transactions found - fetching fresh data from Monzo...')
+                console.log('🔄 REQUIREMENT: No transactions found, attempting full refresh from Monzo')
                 
-                // Wait for all transaction fetches to complete
-                const transactionPromises = accounts.map(async (account: Account) => {
-                    try {
-                        return await retrieveTransactions(account.id)
-                    } catch (error) {
-                        console.error(`Failed to fetch transactions for account ${account.id}:`, error)
-                        return []
+                // Force refresh all transactions when none are found
+                try {
+                    await forceRefreshAllTransactions(accounts)
+                    
+                    // Check how many transactions we got
+                    const newTransactionCount = await db.transactions.count()
+                    if (newTransactionCount > 0) {
+                        setLoadingMessage(`Successfully fetched ${newTransactionCount} transactions from Monzo`)
+                        console.log(`✅ Full refresh successful: ${newTransactionCount} transactions retrieved`)
+                    } else {
+                        setLoadingMessage('No new transactions found on Monzo')
+                        console.log('⚠️ Full refresh completed but no transactions were found')
                     }
-                })
+                } catch (error) {
+                    console.error('Failed to force refresh transactions:', error)
+                    setLoadingMessage('Failed to fetch transactions. Trying individual account fetches...')
+                    
+                    // Fallback to individual account fetches
+                    const transactionPromises = accounts.map(async (account: Account) => {
+                        try {
+                            return await retrieveTransactions(account.id, true) // Force refresh
+                        } catch (error) {
+                            console.error(`Failed to fetch transactions for account ${account.id}:`, error)
+                            return []
+                        }
+                    })
+                    
+                    await Promise.allSettled(transactionPromises)
+                    
+                    // Check final count after fallback
+                    const finalCount = await db.transactions.count()
+                    if (finalCount > 0) {
+                        setLoadingMessage(`Retrieved ${finalCount} transactions using fallback method`)
+                    }
+                }
+            } else {
+                console.log(`Found ${transactionCount} transactions in local storage`)
                 
-                await Promise.allSettled(transactionPromises)
+                // Still check if we should refresh based on data age
+                const shouldRefresh = await checkIfRefreshNeeded(accounts)
+                if (shouldRefresh) {
+                    setLoadingMessage(`Refreshing ${transactionCount} existing transactions from Monzo...`)
+                    try {
+                        await forceRefreshAllTransactions(accounts)
+                        const updatedCount = await db.transactions.count()
+                        setLoadingMessage(`Updated transaction data (${updatedCount} total transactions)`)
+                    } catch (error) {
+                        console.warn('Failed to refresh transactions, using cached data:', error)
+                        setLoadingMessage(`Using cached data (${transactionCount} transactions)`)
+                    }
+                }
             }
             
             // Wait for any ongoing transaction loading to complete
