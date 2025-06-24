@@ -6,10 +6,16 @@ import YearlyOverview from 'components/Budget/YearlyOverview';
 import { BudgetCategoryManager } from 'components/Budget/BudgetCategoryManager';
 import { useDatabase } from 'components/DatabaseContext/DatabaseContext';
 import { useLiveQuery } from 'dexie-react-hooks';
+import { Budget } from 'types/Budget';
 
 const BudgetPage: FC = () => {
     const [activeTab, setActiveTab] = useState<'overview' | 'categories' | 'debt' | 'bills' | 'yearly'>('overview');
     const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
+    const [showCreateBudgetModal, setShowCreateBudgetModal] = useState(false);
+    const [newBudgetForm, setNewBudgetForm] = useState({
+        name: '',
+        description: ''
+    });
     const db = useDatabase();
 
     // Get the first budget for the selected year to pass to category manager
@@ -29,14 +35,17 @@ const BudgetPage: FC = () => {
     const renderContent = () => {
         switch (activeTab) {
             case 'overview':
-                return <BudgetOverview year={selectedYear} />;
+                return <BudgetOverview year={selectedYear} onCreateBudget={() => setShowCreateBudgetModal(true)} />;
             case 'categories':
                 return selectedBudget ? (
                     <BudgetCategoryManager budget={selectedBudget} />
                 ) : (
                     <div className="bg-white shadow rounded-lg p-6 text-center">
                         <p className="text-gray-500 mb-4">No budget found for {selectedYear}</p>
-                        <button className="bg-blue-500 text-white px-4 py-2 rounded-md hover:bg-blue-600">
+                        <button 
+                            onClick={() => setShowCreateBudgetModal(true)}
+                            className="bg-blue-500 text-white px-4 py-2 rounded-md hover:bg-blue-600"
+                        >
                             Create Budget for {selectedYear}
                         </button>
                     </div>
@@ -59,6 +68,35 @@ const BudgetPage: FC = () => {
             years.push(i);
         }
         return years;
+    };
+
+    const handleCreateBudget = async () => {
+        if (!newBudgetForm.name.trim()) {
+            return;
+        }
+
+        try {
+            const newBudget: Budget = {
+                id: crypto.randomUUID(),
+                name: newBudgetForm.name.trim(),
+                description: newBudgetForm.description.trim(),
+                year: selectedYear,
+                categories: [],
+                created: new Date().toISOString(),
+                updated: new Date().toISOString()
+            };
+
+            await db.budgets.add(newBudget);
+            
+            // Reset form and close modal
+            setNewBudgetForm({ name: '', description: '' });
+            setShowCreateBudgetModal(false);
+            
+            // Switch to categories tab to start adding categories
+            setActiveTab('categories');
+        } catch (error) {
+            console.error('Error creating budget:', error);
+        }
     };
 
     return (
@@ -95,7 +133,10 @@ const BudgetPage: FC = () => {
                                 <span>⚙️</span>
                                 <span>Settings</span>
                             </button>
-                            <button className="bg-blue-500 text-white px-4 py-2 rounded-md hover:bg-blue-600 transition-colors">
+                            <button 
+                                onClick={() => setShowCreateBudgetModal(true)}
+                                className="bg-blue-500 text-white px-4 py-2 rounded-md hover:bg-blue-600 transition-colors"
+                            >
                                 Create Budget
                             </button>
                             <button className="bg-green-500 text-white px-4 py-2 rounded-md hover:bg-green-600 transition-colors">
@@ -150,6 +191,71 @@ const BudgetPage: FC = () => {
                     </div>
                 </div>
             </div>
+
+            {/* Create Budget Modal */}
+            {showCreateBudgetModal && (
+                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+                    <div className="bg-white rounded-lg p-6 w-full max-w-md mx-4">
+                        <h3 className="text-lg font-semibold text-gray-900 mb-4">Create New Budget</h3>
+                        
+                        <div className="space-y-4">
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">
+                                    Budget Name
+                                </label>
+                                <input
+                                    type="text"
+                                    value={newBudgetForm.name}
+                                    onChange={(e) => setNewBudgetForm(prev => ({ ...prev, name: e.target.value }))}
+                                    className="w-full border border-gray-300 rounded-md px-3 py-2"
+                                    placeholder={`${selectedYear} Budget`}
+                                    autoFocus
+                                />
+                            </div>
+
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">
+                                    Description (Optional)
+                                </label>
+                                <textarea
+                                    value={newBudgetForm.description}
+                                    onChange={(e) => setNewBudgetForm(prev => ({ ...prev, description: e.target.value }))}
+                                    className="w-full border border-gray-300 rounded-md px-3 py-2 h-20 resize-none"
+                                    placeholder="Describe your budget goals..."
+                                />
+                            </div>
+
+                            <div className="bg-blue-50 border border-blue-200 rounded-md p-3">
+                                <p className="text-sm text-blue-700">
+                                    <strong>Year:</strong> {selectedYear}
+                                </p>
+                                <p className="text-xs text-blue-600 mt-1">
+                                    After creating the budget, you can add categories to track your spending.
+                                </p>
+                            </div>
+                        </div>
+
+                        <div className="flex justify-end gap-3 mt-6">
+                            <button
+                                onClick={() => {
+                                    setShowCreateBudgetModal(false);
+                                    setNewBudgetForm({ name: '', description: '' });
+                                }}
+                                className="px-4 py-2 text-gray-600 hover:text-gray-800"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                onClick={handleCreateBudget}
+                                disabled={!newBudgetForm.name.trim()}
+                                className="bg-blue-500 text-white px-4 py-2 rounded-md hover:bg-blue-600 disabled:opacity-50"
+                            >
+                                Create Budget
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };

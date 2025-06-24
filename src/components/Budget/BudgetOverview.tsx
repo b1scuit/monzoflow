@@ -7,9 +7,10 @@ import { useBudgetCalculation } from 'hooks/useBudgetCalculation';
 
 interface BudgetOverviewProps {
     year: number;
+    onCreateBudget?: () => void;
 }
 
-export const BudgetOverview: FC<BudgetOverviewProps> = ({ year }) => {
+export const BudgetOverview: FC<BudgetOverviewProps> = ({ year, onCreateBudget }) => {
     const db = useDatabase();
     const [selectedBudget, setSelectedBudget] = useState<Budget | null>(null);
     
@@ -103,7 +104,10 @@ export const BudgetOverview: FC<BudgetOverviewProps> = ({ year }) => {
                 ) : (
                     <div className="text-center py-8">
                         <p className="text-gray-500 mb-4">No budgets found for {year}</p>
-                        <button className="bg-blue-500 text-white px-4 py-2 rounded-md hover:bg-blue-600">
+                        <button 
+                            onClick={onCreateBudget}
+                            className="bg-blue-500 text-white px-4 py-2 rounded-md hover:bg-blue-600"
+                        >
                             Create Your First Budget
                         </button>
                     </div>
