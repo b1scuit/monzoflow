@@ -59,54 +59,187 @@ export const Index: FC = () => {
     let [activeView, setActiveView] = useState<'overview' | 'insights' | 'trends' | 'sankey'>('overview')
 
     const [loading, setLoading] = useState<boolean>(true)
+    const [loadingMessage, setLoadingMessage] = useState<string>('Initializing...')
     const db = useDatabase();
     const { retrieveAccounts } = useAccounts();
-    const { retrieveTransactions } = useTransactions();
+    const { retrieveTransactions, forceRefreshAllTransactions, loading: transactionLoading } = useTransactions();
     
     // Live queries for real-time updates
     const budgets = useLiveQuery(() => db.budgets.toArray());
     const debts = useLiveQuery(() => db.debts.where('status').equals('active').toArray());
 
-
-    // Logic: 
-    // Count transactions,if more than zero just return those
-    // if not, retrieve accounts from the Monzo API and populate the table, then return them
-    // From there use the accounts to get and store transactions
-    // from there set the transactions into the current state
-    // Resolve loading
-    const setupFunction = () => {
-        db.accounts.count()
-        .then((count: number) => {
-            return count
-        })
-        .then((count: number) =>{
-            if (count == 0) {
-                return retrieveAccounts().then(() => db.accounts.toArray())
+    // Helper function to check if we should refresh transaction data
+    const checkIfRefreshNeeded = async (accounts: Account[]): Promise<boolean> => {
+        // Check if any account hasn't been pulled recently
+        const now = Date.now()
+        const oneHourAgo = now - (60 * 60 * 1000) // 1 hour threshold for refresh
+        
+        for (const account of accounts) {
+            const lastPullKey = `lastTransactionPull_${account.id}`
+            const lastPull = localStorage.getItem(lastPullKey)
+            
+            if (!lastPull || parseInt(lastPull) < oneHourAgo) {
+                console.log(`Account ${account.id} needs refresh - last pull: ${lastPull ? new Date(parseInt(lastPull)).toLocaleString() : 'never'}`)
+                return true
             }
+        }
+        
+        return false
+    }
 
-            return db.accounts.toArray()
-        })
-        .then((accounts: Account[]) => {
+
+    // Enhanced setup function with proper loading state management
+    const setupFunction = async () => {
+        try {
+            setLoadingMessage('Initializing database...')
+            
+            // Try to open the database first
+            try {
+                await db.open()
+                console.log('Database opened successfully')
+            } catch (dbError: any) {
+                console.error('Database error:', dbError)
+                
+                // Handle version error specifically
+                if (dbError.name === 'VersionError' || dbError.name === 'DatabaseClosedError') {
+                    setLoadingMessage('Resolving database version conflict...')
+                    try {
+                        await db.resetDatabase()
+                        setLoadingMessage('Database reset successfully, continuing...')
+                    } catch (resetError) {
+                        console.error('Failed to reset database:', resetError)
+                        setLoadingMessage('Database error. Please clear your browser data and refresh.')
+                        return
+                    }
+                } else {
+                    throw dbError
+                }
+            }
+            
+            setLoadingMessage('Checking local accounts...')
+            
+            // Check if we have accounts locally
+            const accountCount = await db.accounts.count()
+            let accounts: Account[] = []
+            
+            if (accountCount === 0) {
+                setLoadingMessage('Fetching accounts from Monzo...')
+                await retrieveAccounts()
+                accounts = await db.accounts.toArray()
+            } else {
+                accounts = await db.accounts.toArray()
+            }
+            
+            // Set up nodes for accounts
             accounts.forEach((acc: Account) => nodes.set(acc.id, {id: acc.id, description:renderName(acc)}))
-            return accounts
-        })
-        // Count transactions and if there are none, go get them
-        .then((accounts: Account[]) => {
-            return db.transactions.count().then((count) => {
-                if (count === 0 ) return Promise.all(accounts.map<Promise<Transaction[]>>((account: Account) =>retrieveTransactions(account.id) ))
-            })
-        })
-        // Retrieve transactions and accounts from DB
-        .then(() => Promise.all([
-            db.transactions.toArray(),
-            db.accounts.toArray()
-        ]))
-        // Store all data for analytics
-        .then(([transactions, accounts]: [Transaction[], Account[]]) => {
+            
+            // Check if we have transactions locally
+            setLoadingMessage('Checking local transactions...')
+            const transactionCount = await db.transactions.count()
+            
+            if (transactionCount === 0) {
+                setLoadingMessage('No transactions found - fetching historical data from Monzo...')
+                console.log('🔄 REQUIREMENT: No transactions found, attempting full refresh from Monzo')
+                
+                // Force refresh all transactions when none are found
+                try {
+                    // Show progress during chunked requests
+                    setLoadingMessage('Fetching transaction history (this may take a moment for large datasets)...')
+                    await forceRefreshAllTransactions(accounts)
+                    
+                    // Check how many transactions we got
+                    const newTransactionCount = await db.transactions.count()
+                    if (newTransactionCount > 0) {
+                        setLoadingMessage(`Successfully fetched ${newTransactionCount.toLocaleString()} transactions from Monzo`)
+                        console.log(`✅ Full refresh successful: ${newTransactionCount} transactions retrieved`)
+                    } else {
+                        setLoadingMessage('No new transactions found on Monzo')
+                        console.log('⚠️ Full refresh completed but no transactions were found')
+                    }
+                } catch (error: any) {
+                    if (error.message?.includes('time range')) {
+                        setLoadingMessage('Date range too large for Monzo API. Using chunked requests...')
+                        console.log('Retrying with smaller date chunks due to API limit')
+                    } else {
+                        console.error('Failed to force refresh transactions:', error)
+                        setLoadingMessage('Failed to fetch transactions. Trying individual account fetches...')
+                        
+                        // Fallback to individual account fetches
+                        const transactionPromises = accounts.map(async (account: Account) => {
+                            try {
+                                return await retrieveTransactions(account.id, true) // Force refresh
+                            } catch (error) {
+                                console.error(`Failed to fetch transactions for account ${account.id}:`, error)
+                                return []
+                            }
+                        })
+                        
+                        await Promise.allSettled(transactionPromises)
+                        
+                        // Check final count after fallback
+                        const finalCount = await db.transactions.count()
+                        if (finalCount > 0) {
+                            setLoadingMessage(`Retrieved ${finalCount} transactions using fallback method`)
+                        }
+                    }
+                }
+            } else {
+                console.log(`Found ${transactionCount} transactions in local storage`)
+                
+                // Still check if we should refresh based on data age
+                const shouldRefresh = await checkIfRefreshNeeded(accounts)
+                if (shouldRefresh) {
+                    setLoadingMessage(`Refreshing ${transactionCount} existing transactions from Monzo...`)
+                    try {
+                        await forceRefreshAllTransactions(accounts)
+                        const updatedCount = await db.transactions.count()
+                        setLoadingMessage(`Updated transaction data (${updatedCount} total transactions)`)
+                    } catch (error) {
+                        console.warn('Failed to refresh transactions, using cached data:', error)
+                        setLoadingMessage(`Using cached data (${transactionCount} transactions)`)
+                    }
+                }
+            }
+            
+            // Wait for any ongoing transaction loading to complete
+            if (transactionLoading) {
+                setLoadingMessage('Finalizing transaction data...')
+                // Small delay to ensure all async operations complete
+                await new Promise(resolve => setTimeout(resolve, 1000))
+            }
+            
+            setLoadingMessage('Loading analytics data...')
+            
+            // Retrieve final data from database
+            const [transactions, finalAccounts] = await Promise.all([
+                db.transactions.toArray(),
+                db.accounts.toArray()
+            ])
+            
+            // Store all data for analytics
             setAllTransactions(transactions)
-            setAllAccounts(accounts)
-            return { transactions, accounts }
-        }).finally(() => setLoading(false))
+            setAllAccounts(finalAccounts)
+            
+            // Set last sign in timestamp for throttling
+            localStorage.setItem('lastSignIn', Date.now().toString())
+            
+            setLoadingMessage('Complete!')
+            
+        } catch (error: any) {
+            console.error('Setup failed:', error)
+            
+            // Provide specific error messages based on error type
+            if (error.name === 'DatabaseClosedError' || error.name === 'VersionError') {
+                setLoadingMessage('Database version conflict. Please visit Settings to reset.')
+            } else if (error.message?.includes('Failed to fetch')) {
+                setLoadingMessage('Network error. Please check your connection and try again.')
+            } else {
+                setLoadingMessage('Error loading data. Please visit Settings if this persists.')
+            }
+        } finally {
+            // Only set loading to false when everything is truly complete
+            setTimeout(() => setLoading(false), 500)
+        }
     }
 
 
@@ -149,6 +282,7 @@ export const Index: FC = () => {
         setChartLinks([...newLinks.values()])
     }, [allAccounts])
 
+
     useEffect(() => {
         setupFunction()
         // eslint-disable-next-line
@@ -167,7 +301,28 @@ export const Index: FC = () => {
                 <div className="text-center">
                     <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto mb-4"></div>
                     <h2 className="text-xl font-semibold text-gray-900">Loading your financial data...</h2>
-                    <p className="text-gray-600 mt-2">Analyzing transactions and generating insights</p>
+                    <p className="text-gray-600 mt-2">{loadingMessage}</p>
+                    {transactionLoading && (
+                        <div className="mt-4">
+                            <div className="w-64 bg-gray-200 rounded-full h-2 mx-auto">
+                                <div className="bg-blue-500 h-2 rounded-full animate-pulse" style={{width: '60%'}}></div>
+                            </div>
+                            <p className="text-sm text-gray-500 mt-2">Fetching transactions...</p>
+                        </div>
+                    )}
+                    {(loadingMessage.includes('Settings') || loadingMessage.includes('Database version')) && (
+                        <div className="mt-6">
+                            <button 
+                                onClick={() => window.location.href = '/settings'}
+                                className="bg-blue-500 hover:bg-blue-600 text-white px-6 py-2 rounded-lg transition-colors font-medium"
+                            >
+                                Go to Settings
+                            </button>
+                            <p className="text-sm text-gray-500 mt-2">
+                                Manage your data and resolve issues in Settings
+                            </p>
+                        </div>
+                    )}
                 </div>
             </div>
         )
@@ -280,12 +435,23 @@ export const Index: FC = () => {
             {/* Quick Actions Floating Button */}
             <div className="fixed bottom-6 right-6">
                 <div className="flex flex-col space-y-2">
-                    <button className="bg-blue-500 text-white p-3 rounded-full shadow-lg hover:bg-blue-600 transition-colors">
+                    <button 
+                        onClick={() => window.location.href = '/settings'}
+                        className="bg-gray-500 text-white p-3 rounded-full shadow-lg hover:bg-gray-600 transition-colors"
+                        title="Settings"
+                    >
+                        <span className="text-xl">⚙️</span>
+                    </button>
+                    <button 
+                        className="bg-blue-500 text-white p-3 rounded-full shadow-lg hover:bg-blue-600 transition-colors"
+                        title="Cards"
+                    >
                         <span className="text-xl">💳</span>
                     </button>
                     <button 
                         onClick={() => window.location.href = '/budget'}
                         className="bg-green-500 text-white p-3 rounded-full shadow-lg hover:bg-green-600 transition-colors"
+                        title="Budget"
                     >
                         <span className="text-xl">📊</span>
                     </button>

@@ -33,6 +33,35 @@ export class MySubClassedDexie extends Dexie {
             billPayments: '++id, billId, paymentDate, status',
             budgetTargets: '++id, budgetId, targetType, status, targetDate'
         });
+
+        // Add error handling for database version conflicts
+        this.on('versionchange', () => {
+            console.log('Database version changed, closing connection');
+            this.close();
+        });
+
+        this.on('blocked', () => {
+            console.warn('Database blocked by another connection');
+        });
+
+        // Handle database errors more gracefully
+        this.on('ready', () => {
+            console.log('Database ready, version:', this.verno);
+        });
+    }
+
+    // Add method to handle database reset if needed
+    async resetDatabase() {
+        try {
+            await this.delete();
+            console.log('Database deleted successfully');
+            // Re-open the database
+            await this.open();
+            console.log('Database reopened successfully');
+        } catch (error) {
+            console.error('Failed to reset database:', error);
+            throw error;
+        }
     }
 }
 

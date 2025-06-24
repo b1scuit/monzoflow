@@ -10,6 +10,7 @@ import Index from "./pages";
 import Auth from "./pages/auth/index";
 import Display from "./pages/display/index";
 import Budget from "./pages/budget/index";
+import Settings from "./pages/settings/index";
 import PrivacyPolicy from './pages/privacy-policy/index'
 import AllowAcces from './pages/allowAccess/index';
 
@@ -37,6 +38,10 @@ const router = createBrowserRouter([
     {
         path: "/budget",
         element: <LoggedIn><Budget /></LoggedIn>
+    },
+    {
+        path: "/settings",
+        element: <LoggedIn><Settings /></LoggedIn>
     }
 ])
 
