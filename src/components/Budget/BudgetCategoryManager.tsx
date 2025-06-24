@@ -1,9 +1,8 @@
 import { FC, useState, useEffect } from 'react';
 import { useDatabase } from 'components/DatabaseContext/DatabaseContext';
 import { Budget, BudgetCategory } from 'types/Budget';
-import { Transaction } from 'types/Transactions';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { BudgetCalculationService, CategoryMappingRule } from 'services/BudgetCalculationService';
+import { BudgetCalculationService } from 'services/BudgetCalculationService';
 import { useBudgetCalculation } from 'hooks/useBudgetCalculation';
 
 interface BudgetCategoryManagerProps {
@@ -41,6 +40,12 @@ export const BudgetCategoryManager: FC<BudgetCategoryManagerProps> = ({
     const [isAddingCategory, setIsAddingCategory] = useState(false);
     const [editingCategory, setEditingCategory] = useState<BudgetCategory | null>(null);
     const [newCategoryForm, setNewCategoryForm] = useState<NewCategoryForm>({
+        name: '',
+        category: '',
+        allocatedAmount: 0,
+        color: DEFAULT_COLORS[0]
+    });
+    const [editCategoryForm, setEditCategoryForm] = useState<NewCategoryForm>({
         name: '',
         category: '',
         allocatedAmount: 0,
@@ -89,10 +94,31 @@ export const BudgetCategoryManager: FC<BudgetCategoryManagerProps> = ({
         }
     };
 
-    const handleUpdateCategory = async (category: BudgetCategory, updates: Partial<BudgetCategory>) => {
+    const handleUpdateCategory = async () => {
+        if (!editingCategory || !editCategoryForm.name || !editCategoryForm.category) {
+            return;
+        }
+
         try {
-            await updateBudgetCategory(category.id, updates);
-            onCategoryUpdated?.({ ...category, ...updates });
+            const updates = {
+                name: editCategoryForm.name,
+                category: editCategoryForm.category,
+                allocatedAmount: editCategoryForm.allocatedAmount,
+                color: editCategoryForm.color,
+                updated: new Date().toISOString()
+            };
+
+            await updateBudgetCategory(editingCategory.id, updates);
+            onCategoryUpdated?.({ ...editingCategory, ...updates });
+            
+            // Reset form and close modal
+            setEditingCategory(null);
+            setEditCategoryForm({
+                name: '',
+                category: '',
+                allocatedAmount: 0,
+                color: DEFAULT_COLORS[0]
+            });
         } catch (error) {
             console.error('Error updating budget category:', error);
         }
@@ -131,6 +157,18 @@ export const BudgetCategoryManager: FC<BudgetCategoryManagerProps> = ({
             }));
         }
     };
+
+    // Populate edit form when editing category changes
+    useEffect(() => {
+        if (editingCategory) {
+            setEditCategoryForm({
+                name: editingCategory.name,
+                category: editingCategory.category,
+                allocatedAmount: editingCategory.allocatedAmount,
+                color: editingCategory.color
+            });
+        }
+    }, [editingCategory]);
 
     return (
         <div className="space-y-6">
@@ -309,6 +347,113 @@ export const BudgetCategoryManager: FC<BudgetCategoryManagerProps> = ({
                                 className="bg-blue-500 text-white px-4 py-2 rounded-md hover:bg-blue-600 disabled:opacity-50"
                             >
                                 Add Category
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Edit Category Modal */}
+            {editingCategory && (
+                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+                    <div className="bg-white rounded-lg p-6 w-full max-w-md mx-4">
+                        <h3 className="text-lg font-semibold text-gray-900 mb-4">Edit Budget Category</h3>
+                        
+                        <div className="space-y-4">
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">
+                                    Category Name
+                                </label>
+                                <input
+                                    type="text"
+                                    value={editCategoryForm.name}
+                                    onChange={(e) => setEditCategoryForm(prev => ({ ...prev, name: e.target.value }))}
+                                    className="w-full border border-gray-300 rounded-md px-3 py-2"
+                                    placeholder="e.g., Groceries, Entertainment"
+                                />
+                            </div>
+
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">
+                                    Transaction Category
+                                </label>
+                                <select
+                                    value={editCategoryForm.category}
+                                    onChange={(e) => setEditCategoryForm(prev => ({ ...prev, category: e.target.value }))}
+                                    className="w-full border border-gray-300 rounded-md px-3 py-2"
+                                >
+                                    <option value="">Select a category</option>
+                                    {availableCategories.map(category => (
+                                        <option key={category} value={category}>
+                                            {category.charAt(0).toUpperCase() + category.slice(1)}
+                                        </option>
+                                    ))}
+                                </select>
+                            </div>
+
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">
+                                    Budget Amount (£)
+                                </label>
+                                <input
+                                    type="number"
+                                    value={editCategoryForm.allocatedAmount}
+                                    onChange={(e) => setEditCategoryForm(prev => ({ 
+                                        ...prev, 
+                                        allocatedAmount: parseFloat(e.target.value) || 0 
+                                    }))}
+                                    className="w-full border border-gray-300 rounded-md px-3 py-2"
+                                    min="0"
+                                    step="0.01"
+                                />
+                                {editCategoryForm.category && getSuggestionForCategory(editCategoryForm.category) && (
+                                    <p className="text-sm text-blue-600 mt-1">
+                                        Suggested: £{getSuggestionForCategory(editCategoryForm.category)!.suggested.toLocaleString()} 
+                                        (based on recent spending)
+                                    </p>
+                                )}
+                            </div>
+
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">
+                                    Color
+                                </label>
+                                <div className="flex gap-2">
+                                    {DEFAULT_COLORS.map(color => (
+                                        <button
+                                            key={color}
+                                            onClick={() => setEditCategoryForm(prev => ({ ...prev, color }))}
+                                            className={`w-8 h-8 rounded-full border-2 ${
+                                                editCategoryForm.color === color ? 'border-gray-900' : 'border-gray-300'
+                                            }`}
+                                            style={{ backgroundColor: color }}
+                                        />
+                                    ))}
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="flex justify-end gap-3 mt-6">
+                            <button
+                                onClick={() => {
+                                    setEditingCategory(null);
+                                    setEditCategoryForm({
+                                        name: '',
+                                        category: '',
+                                        allocatedAmount: 0,
+                                        color: DEFAULT_COLORS[0]
+                                    });
+                                }}
+                                className="px-4 py-2 text-gray-600 hover:text-gray-800"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                onClick={handleUpdateCategory}
+                                disabled={!editCategoryForm.name || !editCategoryForm.category}
+                                className="bg-blue-500 text-white px-4 py-2 rounded-md hover:bg-blue-600 disabled:opacity-50"
+                            >
+                                Update Category
                             </button>
                         </div>
                     </div>

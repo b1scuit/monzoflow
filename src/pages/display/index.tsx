@@ -6,6 +6,7 @@ import AccountOverview from "components/Analytics/AccountOverview";
 import TrendsAnalysis from "components/Analytics/TrendsAnalysis";
 import { useAccounts } from "components/Monzo/useAccounts";
 import { useTransactions } from "components/Monzo/useTransactions";
+import { BudgetCalculationService } from "services/BudgetCalculationService";
 import { FC, useEffect, useState, useCallback } from "react";
 import { Account, Owners } from "types/Account";
 import { Transaction } from "types/Transactions";
@@ -51,12 +52,14 @@ const renderName = (account: Account): string => {
 
 export const Index: FC = () => {
     let nodes = new Map<string, Node>()
-    let links = new Map<string, Link>()
     let [ chartnodes, setChartNodes] = useState<Node[]>([])
     let [chartLinks, setChartLinks] = useState<Link[]>([])
     let [allTransactions, setAllTransactions] = useState<Transaction[]>([])
     let [allAccounts, setAllAccounts] = useState<Account[]>([])
     let [activeView, setActiveView] = useState<'overview' | 'insights' | 'trends' | 'sankey'>('overview')
+    let [sankeyViewMode, setSankeyViewMode] = useState<'merchants' | 'categories'>('merchants')
+    let [omittedCategories, setOmittedCategories] = useState<Set<string>>(new Set())
+    let [availableCategories, setAvailableCategories] = useState<string[]>([])
 
     const [loading, setLoading] = useState<boolean>(true)
     const [loadingMessage, setLoadingMessage] = useState<string>('Initializing...')
@@ -244,43 +247,73 @@ export const Index: FC = () => {
 
 
     const processTransactionsToChart = useCallback((transactions: Transaction[]) => {
-        const newNodes = new Map<string, Node>()
-        const newLinks = new Map<string, Link>()
-        
-        // Add account nodes
-        allAccounts.forEach((acc: Account) => {
-            newNodes.set(acc.id, {id: acc.id, description: renderName(acc)})
-        })
+        if (sankeyViewMode === 'categories') {
+            // Extract available categories from transactions
+            const categories = BudgetCalculationService.getAvailableCategories(transactions);
+            setAvailableCategories(categories);
 
-        // Add other node
-        newNodes.set("other", {id: "other", description: "Other"})
+            // Use category-based chart data
+            const accountData = allAccounts.map(acc => ({
+                id: acc.id,
+                description: renderName(acc)
+            }));
 
-        // Process transactions into links
-        transactions.forEach((transaction: Transaction) => {
-            if (transaction.merchant) {
-                newNodes.set(transaction.merchant.id, {id: transaction.merchant.id, description: transaction.merchant.name})
+            const period = {
+                start: new Date(new Date().getFullYear() - 1, 0, 1), // Last year to current
+                end: new Date(),
+                type: 'custom' as const
+            };
 
-                if (transaction.amount < 0) {
-                    const linkKey = `${transaction.account_id}:${transaction.merchant.id}`
-                    const existingLink = newLinks.get(linkKey)
-                    const linkValue = Math.abs(transaction.amount)
-                    
-                    if (existingLink) {
-                        existingLink.value += linkValue
-                    } else {
-                        newLinks.set(linkKey, {
-                            source: transaction.account_id,
-                            target: transaction.merchant.id,
-                            value: linkValue
-                        })
+            const chartData = BudgetCalculationService.generateCategoryChartData(
+                transactions,
+                accountData,
+                period,
+                omittedCategories,
+                1000 // Minimum £10 to show in chart
+            );
+
+            setChartNodes(chartData.nodes);
+            setChartLinks(chartData.links);
+        } else {
+            // Original merchant-based processing
+            const newNodes = new Map<string, Node>()
+            const newLinks = new Map<string, Link>()
+            
+            // Add account nodes
+            allAccounts.forEach((acc: Account) => {
+                newNodes.set(acc.id, {id: acc.id, description: renderName(acc)})
+            })
+
+            // Add other node
+            newNodes.set("other", {id: "other", description: "Other"})
+
+            // Process transactions into links
+            transactions.forEach((transaction: Transaction) => {
+                if (transaction.merchant) {
+                    newNodes.set(transaction.merchant.id, {id: transaction.merchant.id, description: transaction.merchant.name})
+
+                    if (transaction.amount < 0) {
+                        const linkKey = `${transaction.account_id}:${transaction.merchant.id}`
+                        const existingLink = newLinks.get(linkKey)
+                        const linkValue = Math.abs(transaction.amount)
+                        
+                        if (existingLink) {
+                            existingLink.value += linkValue
+                        } else {
+                            newLinks.set(linkKey, {
+                                source: transaction.account_id,
+                                target: transaction.merchant.id,
+                                value: linkValue
+                            })
+                        }
                     }
                 }
-            }
-        })
+            })
 
-        setChartNodes([...newNodes.values()])
-        setChartLinks([...newLinks.values()])
-    }, [allAccounts])
+            setChartNodes([...newNodes.values()])
+            setChartLinks([...newLinks.values()])
+        }
+    }, [allAccounts, sankeyViewMode, omittedCategories])
 
 
     useEffect(() => {
@@ -422,9 +455,73 @@ export const Index: FC = () => {
                         <div className="text-center mb-6">
                             <h3 className="text-xl font-semibold text-gray-900 mb-2">Money Flow Visualization</h3>
                             <p className="text-gray-600">
-                                Visual representation of money flowing from accounts to merchants
+                                {sankeyViewMode === 'categories' 
+                                    ? 'Visual representation of money flowing from accounts to spending categories'
+                                    : 'Visual representation of money flowing from accounts to merchants'
+                                }
                             </p>
                         </div>
+
+                        {/* View Mode Controls */}
+                        <div className="mb-6 space-y-4">
+                            <div className="flex justify-center space-x-4">
+                                <button
+                                    onClick={() => setSankeyViewMode('merchants')}
+                                    className={`px-4 py-2 rounded-md transition-colors ${
+                                        sankeyViewMode === 'merchants'
+                                            ? 'bg-blue-500 text-white'
+                                            : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                                    }`}
+                                >
+                                    By Merchants
+                                </button>
+                                <button
+                                    onClick={() => setSankeyViewMode('categories')}
+                                    className={`px-4 py-2 rounded-md transition-colors ${
+                                        sankeyViewMode === 'categories'
+                                            ? 'bg-blue-500 text-white'
+                                            : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                                    }`}
+                                >
+                                    By Categories
+                                </button>
+                            </div>
+
+                            {/* Category Filter Controls */}
+                            {sankeyViewMode === 'categories' && availableCategories.length > 0 && (
+                                <div className="bg-gray-50 rounded-lg p-4">
+                                    <h4 className="text-sm font-medium text-gray-900 mb-3">Hide Categories:</h4>
+                                    <div className="flex flex-wrap gap-2">
+                                        {availableCategories.map(category => (
+                                            <button
+                                                key={category}
+                                                onClick={() => {
+                                                    const newOmitted = new Set(omittedCategories);
+                                                    if (newOmitted.has(category)) {
+                                                        newOmitted.delete(category);
+                                                    } else {
+                                                        newOmitted.add(category);
+                                                    }
+                                                    setOmittedCategories(newOmitted);
+                                                }}
+                                                className={`px-3 py-1 rounded-full text-sm transition-colors ${
+                                                    omittedCategories.has(category)
+                                                        ? 'bg-red-100 text-red-700 border border-red-300'
+                                                        : 'bg-blue-100 text-blue-700 border border-blue-300 hover:bg-blue-200'
+                                                }`}
+                                            >
+                                                {category === 'other' ? 'Other' : category.charAt(0).toUpperCase() + category.slice(1)}
+                                                {omittedCategories.has(category) && ' ✕'}
+                                            </button>
+                                        ))}
+                                    </div>
+                                    <p className="text-xs text-gray-500 mt-2">
+                                        Click categories to hide/show them. Hidden categories will be grouped under "Other".
+                                    </p>
+                                </div>
+                            )}
+                        </div>
+
                         <div className="flex justify-center">
                             <Chart width={900} height={700} data={{nodes: chartnodes, links: chartLinks}} />
                         </div>
