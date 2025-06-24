@@ -3,36 +3,41 @@ import { useDatabase } from 'components/DatabaseContext/DatabaseContext';
 import { Budget, BudgetCategory, Debt, Bill } from 'types/Budget';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { format, isWithinInterval, startOfYear, endOfYear } from 'date-fns';
+import { useBudgetCalculation } from 'hooks/useBudgetCalculation';
 
 interface BudgetOverviewProps {
     year: number;
+    onCreateBudget?: () => void;
 }
 
-export const BudgetOverview: FC<BudgetOverviewProps> = ({ year }) => {
+export const BudgetOverview: FC<BudgetOverviewProps> = ({ year, onCreateBudget }) => {
     const db = useDatabase();
     const [selectedBudget, setSelectedBudget] = useState<Budget | null>(null);
     
     const budgets = useLiveQuery(() => db.budgets.where('year').equals(year).toArray(), [year]);
-    const budgetCategories = useLiveQuery(() => 
-        selectedBudget ? db.budgetCategories.where('budgetId').equals(selectedBudget.id).toArray() : []
-    , [selectedBudget]);
-    
     const debts = useLiveQuery(() => db.debts.where('status').equals('active').toArray());
     const bills = useLiveQuery(() => db.bills.where('status').equals('active').toArray());
+
+    // Use the new budget calculation hook
+    const {
+        budgetCategories,
+        totalBudgeted,
+        totalSpent,
+        budgetRemaining,
+        spentPercentage,
+        isLoading: budgetLoading,
+        error: budgetError,
+        refreshBudgetCalculations
+    } = useBudgetCalculation({ 
+        budget: selectedBudget,
+        autoRefresh: true 
+    });
 
     useEffect(() => {
         if (budgets && budgets.length > 0 && !selectedBudget) {
             setSelectedBudget(budgets[0]);
         }
     }, [budgets, selectedBudget]);
-
-    const calculateTotalBudgeted = () => {
-        return budgetCategories?.reduce((sum, cat) => sum + cat.allocatedAmount, 0) || 0;
-    };
-
-    const calculateTotalSpent = () => {
-        return budgetCategories?.reduce((sum, cat) => sum + cat.spentAmount, 0) || 0;
-    };
 
     const calculateTotalDebt = () => {
         return debts?.reduce((sum, debt) => sum + debt.currentBalance, 0) || 0;
@@ -50,18 +55,31 @@ export const BudgetOverview: FC<BudgetOverviewProps> = ({ year }) => {
         }, 0) || 0;
     };
 
-    const totalBudgeted = calculateTotalBudgeted();
-    const totalSpent = calculateTotalSpent();
     const totalDebt = calculateTotalDebt();
     const monthlyBills = calculateMonthlyBills();
-    const budgetRemaining = totalBudgeted - totalSpent;
-    const spentPercentage = totalBudgeted > 0 ? (totalSpent / totalBudgeted) * 100 : 0;
 
     return (
         <div className="space-y-6">
             {/* Budget Selection */}
             <div className="bg-white shadow rounded-lg p-6">
-                <h2 className="text-2xl font-bold text-gray-900 mb-4">Budget Overview - {year}</h2>
+                <div className="flex justify-between items-center mb-4">
+                    <h2 className="text-2xl font-bold text-gray-900">Budget Overview - {year}</h2>
+                    {selectedBudget && (
+                        <button
+                            onClick={refreshBudgetCalculations}
+                            disabled={budgetLoading}
+                            className="bg-blue-500 text-white px-4 py-2 rounded-md hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                            {budgetLoading ? 'Refreshing...' : 'Refresh'}
+                        </button>
+                    )}
+                </div>
+
+                {budgetError && (
+                    <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-md">
+                        <p className="text-red-600 text-sm">{budgetError}</p>
+                    </div>
+                )}
                 
                 {budgets && budgets.length > 0 ? (
                     <div className="mb-4">
@@ -86,7 +104,10 @@ export const BudgetOverview: FC<BudgetOverviewProps> = ({ year }) => {
                 ) : (
                     <div className="text-center py-8">
                         <p className="text-gray-500 mb-4">No budgets found for {year}</p>
-                        <button className="bg-blue-500 text-white px-4 py-2 rounded-md hover:bg-blue-600">
+                        <button 
+                            onClick={onCreateBudget}
+                            className="bg-blue-500 text-white px-4 py-2 rounded-md hover:bg-blue-600"
+                        >
                             Create Your First Budget
                         </button>
                     </div>
