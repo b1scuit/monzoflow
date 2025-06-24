@@ -3,13 +3,24 @@ import BudgetOverview from 'components/Budget/BudgetOverview';
 import DebtTracker from 'components/Budget/DebtTracker';
 import BillsManager from 'components/Budget/BillsManager';
 import YearlyOverview from 'components/Budget/YearlyOverview';
+import { BudgetCategoryManager } from 'components/Budget/BudgetCategoryManager';
+import { useDatabase } from 'components/DatabaseContext/DatabaseContext';
+import { useLiveQuery } from 'dexie-react-hooks';
 
 const BudgetPage: FC = () => {
-    const [activeTab, setActiveTab] = useState<'overview' | 'debt' | 'bills' | 'yearly'>('overview');
+    const [activeTab, setActiveTab] = useState<'overview' | 'categories' | 'debt' | 'bills' | 'yearly'>('overview');
     const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
+    const db = useDatabase();
+
+    // Get the first budget for the selected year to pass to category manager
+    const selectedBudget = useLiveQuery(
+        () => db.budgets.where('year').equals(selectedYear).first(),
+        [selectedYear]
+    );
 
     const tabs = [
         { key: 'overview', label: 'Budget Overview', icon: '📊' },
+        { key: 'categories', label: 'Categories', icon: '🏷️' },
         { key: 'debt', label: 'Debt Tracker', icon: '🏦' },
         { key: 'bills', label: 'Bills Manager', icon: '💳' },
         { key: 'yearly', label: 'Yearly Review', icon: '📈' }
@@ -19,6 +30,17 @@ const BudgetPage: FC = () => {
         switch (activeTab) {
             case 'overview':
                 return <BudgetOverview year={selectedYear} />;
+            case 'categories':
+                return selectedBudget ? (
+                    <BudgetCategoryManager budget={selectedBudget} />
+                ) : (
+                    <div className="bg-white shadow rounded-lg p-6 text-center">
+                        <p className="text-gray-500 mb-4">No budget found for {selectedYear}</p>
+                        <button className="bg-blue-500 text-white px-4 py-2 rounded-md hover:bg-blue-600">
+                            Create Budget for {selectedYear}
+                        </button>
+                    </div>
+                );
             case 'debt':
                 return <DebtTracker />;
             case 'bills':
