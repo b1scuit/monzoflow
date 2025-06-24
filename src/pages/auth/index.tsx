@@ -18,6 +18,9 @@ export const Index: FC = () => {
         }).then((r) => {
             console.log("Authentication data received:", r.data);
             localStorage.setItem("auth_data", JSON.stringify(r.data))
+            // Set fresh token timestamp
+            localStorage.setItem("tokenTimestamp", Date.now().toString())
+            console.log("Fresh token timestamp set during authentication")
         }).then(() => {
             navigate("/allow-access")
         })

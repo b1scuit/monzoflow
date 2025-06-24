@@ -12,7 +12,7 @@ export const useTransactions = () => {
 
     // Check if token is stale (older than 5 minutes)
     const isTokenStale = (): boolean => {
-        const authData = localStorage.getItem('authData')
+        const authData = localStorage.getItem('auth_data')
         if (!authData) return true
         
         try {
@@ -20,13 +20,22 @@ export const useTransactions = () => {
             const tokenTimestamp = localStorage.getItem('tokenTimestamp')
             
             if (!tokenTimestamp) {
-                // If no timestamp exists, consider token stale
+                // If no timestamp exists, set it now and consider token fresh
                 localStorage.setItem('tokenTimestamp', Date.now().toString())
-                return true
+                console.log('No token timestamp found, setting fresh timestamp - token is fresh')
+                return false // Fresh token
             }
             
             const fiveMinutesAgo = Date.now() - (5 * 60 * 1000)
-            return parseInt(tokenTimestamp) < fiveMinutesAgo
+            const isStale = parseInt(tokenTimestamp) < fiveMinutesAgo
+            
+            if (isStale) {
+                console.log('Token is stale (older than 5 minutes)')
+            } else {
+                console.log('Token is fresh (within 5 minutes)')
+            }
+            
+            return isStale
         } catch {
             return true
         }

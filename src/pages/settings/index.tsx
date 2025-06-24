@@ -62,7 +62,7 @@ const Settings: FC = () => {
 
     // Get token information
     useEffect(() => {
-        const authData = localStorage.getItem('authData');
+        const authData = localStorage.getItem('auth_data');
         const lastSignIn = localStorage.getItem('lastSignIn');
         const tokenTimestamp = localStorage.getItem('tokenTimestamp');
         
