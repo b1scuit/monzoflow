@@ -20,7 +20,11 @@ type PaginationMetrics = {
     failedRequests: number;
     totalTransactions: number;
     averageResponseTime: number;
+    totalSyncTime: number;
+    apiEfficiencyScore: number;
     errors: string[];
+    skippedChunks: number;
+    cacheHits: number;
 }
 
 type TransactionSyncState = {
@@ -38,9 +42,50 @@ const DEFAULT_RETRY_OPTIONS: RetryOptions = {
     jitter: true
 };
 
+// Cache for transaction chunk metadata to avoid redundant API calls
+type ChunkCache = {
+    [key: string]: {
+        lastFetch: number;
+        isEmpty: boolean;
+        transactionCount: number;
+    }
+}
+
+// Enhanced token management with priority queuing
+type TokenWindow = {
+    issuedAt: number;
+    remainingWindow: number;
+    historicalDataPriority: boolean;
+}
+
 export const useTransactions = () => {
     const { get, loading, error } = useFetch<TransactionsResponse | undefined>('/transactions')
     const db = useDatabase()
+
+    // Enhanced token management with priority handling for historical data
+    const getTokenWindow = (): TokenWindow => {
+        const tokenTimestamp = localStorage.getItem('tokenTimestamp')
+        const now = Date.now()
+        
+        if (!tokenTimestamp) {
+            localStorage.setItem('tokenTimestamp', now.toString())
+            return {
+                issuedAt: now,
+                remainingWindow: 5 * 60 * 1000, // 5 minutes
+                historicalDataPriority: true
+            }
+        }
+        
+        const issuedAt = parseInt(tokenTimestamp)
+        const elapsed = now - issuedAt
+        const remainingWindow = Math.max(0, (5 * 60 * 1000) - elapsed)
+        
+        return {
+            issuedAt,
+            remainingWindow,
+            historicalDataPriority: remainingWindow > 0
+        }
+    }
 
     // Memoized token staleness check to prevent excessive calls
     const tokenStaleness = useMemo(() => {
@@ -49,17 +94,8 @@ export const useTransactions = () => {
         
         try {
             JSON.parse(authData) // Validate JSON format
-            const tokenTimestamp = localStorage.getItem('tokenTimestamp')
-            
-            if (!tokenTimestamp) {
-                // If no timestamp exists, set it now and consider token fresh
-                localStorage.setItem('tokenTimestamp', Date.now().toString())
-                console.log('No token timestamp found, setting fresh timestamp - token is fresh')
-                return { isStale: false, checkedAt: Date.now() }
-            }
-            
-            const fiveMinutesAgo = Date.now() - (5 * 60 * 1000)
-            const isStale = parseInt(tokenTimestamp) < fiveMinutesAgo
+            const tokenWindow = getTokenWindow()
+            const isStale = tokenWindow.remainingWindow <= 0
             
             // Only log once when staleness changes, not on every call
             const lastLoggedStatus = localStorage.getItem('lastTokenStatus')
@@ -70,7 +106,7 @@ export const useTransactions = () => {
                 if (isStale) {
                     console.log('Token is stale (older than 5 minutes)')
                 } else {
-                    console.log('Token is fresh (within 5 minutes)')
+                    console.log(`Token is fresh (${Math.floor(tokenWindow.remainingWindow / 1000)}s remaining for historical data)`)
                 }
             }
             
@@ -145,57 +181,123 @@ export const useTransactions = () => {
         return parseInt(lastSignIn) > fiveMinutesAgo
     }
 
-    // Adaptive chunk sizing based on estimated transaction volume
-    const getOptimalChunkSize = (timeRangeMs: number): number => {
+    // Enhanced chunk cache management to avoid redundant API calls
+    const getChunkCache = (): ChunkCache => {
+        const cacheKey = 'transaction_chunk_cache'
+        const cached = localStorage.getItem(cacheKey)
+        return cached ? JSON.parse(cached) : {}
+    }
+
+    const updateChunkCache = (chunkKey: string, isEmpty: boolean, transactionCount: number): void => {
+        const cache = getChunkCache()
+        cache[chunkKey] = {
+            lastFetch: Date.now(),
+            isEmpty,
+            transactionCount
+        }
+        localStorage.setItem('transaction_chunk_cache', JSON.stringify(cache))
+    }
+
+    const shouldSkipChunk = (chunkKey: string): boolean => {
+        const cache = getChunkCache()
+        const cached = cache[chunkKey]
+        
+        if (!cached) return false
+        
+        // Skip if chunk was empty and fetched within last 24 hours
+        const twentyFourHoursAgo = Date.now() - (24 * 60 * 60 * 1000)
+        return cached.isEmpty && cached.lastFetch > twentyFourHoursAgo
+    }
+
+    // Adaptive chunk sizing with learning from historical patterns
+    const getOptimalChunkSize = (timeRangeMs: number, accountId: string): number => {
         const days = timeRangeMs / (24 * 60 * 60 * 1000)
         
-        // Estimate transactions per day (assume ~5 transactions/day average)
+        // Learn from cache patterns for this account
+        const cache = getChunkCache()
+        const accountChunks = Object.entries(cache).filter(([key]) => key.includes(accountId))
+        
+        if (accountChunks.length > 0) {
+            const avgTransactionsPerChunk = accountChunks.reduce((sum, [, data]) => sum + data.transactionCount, 0) / accountChunks.length
+            
+            // Adjust chunk size based on learned transaction density
+            if (avgTransactionsPerChunk > 80) {
+                return Math.max(15, Math.floor(days * 0.3)) // Aggressive reduction for high-density accounts
+            } else if (avgTransactionsPerChunk > 50) {
+                return Math.max(30, Math.floor(days * 0.6)) // Moderate reduction
+            }
+        }
+        
+        // Fallback to original estimate-based logic
         const estimatedTransactionsPerDay = 5
         const estimatedTotal = days * estimatedTransactionsPerDay
         
-        // If estimated transactions > 80 (80% of 100 limit), use smaller chunks
         if (estimatedTotal > 80) {
-            return Math.max(30, Math.floor(days * 0.5)) // Reduce chunk size by 50%
+            return Math.max(30, Math.floor(days * 0.5))
         }
         
-        // Use larger chunks for sparse periods, smaller for dense periods
         return Math.min(350, Math.max(30, Math.floor(days)))
     }
 
-    // Intelligent pagination with transaction ID cursors when available
-    const getDateRangeChunks = (lastKnownTransactionId?: string): { since: string; before: string; startingAfter?: string }[] => {
+    // Enhanced intelligent pagination with priority-based chunk ordering
+    const getDateRangeChunks = (accountId: string, lastKnownTransactionId?: string): { since: string; before: string; startingAfter?: string; priority: number }[] => {
         const now = new Date()
-        const chunks: { since: string; before: string; startingAfter?: string }[] = []
+        const tokenWindow = getTokenWindow()
+        const chunks: { since: string; before: string; startingAfter?: string; priority: number }[] = []
         
-        if (isTokenStale()) {
+        if (!tokenWindow.historicalDataPriority) {
             // For stale tokens, only pull last 90 days maximum
             const ninetyDaysAgo = new Date(now.getTime() - (90 * 24 * 60 * 60 * 1000))
             chunks.push({
                 since: ninetyDaysAgo.toISOString(),
                 before: now.toISOString(),
-                startingAfter: lastKnownTransactionId
+                startingAfter: lastKnownTransactionId,
+                priority: 1 // High priority for recent data
             })
         } else {
-            // For fresh tokens, use intelligent chunking
+            // For fresh tokens, prioritize historical data first, then recent
             const startDate = new Date('2023-07-01T00:00:00Z')
             let currentStart = new Date(startDate)
             
+            // Prioritize older chunks first to maximize historical data retrieval within token window
+            const tempChunks: { since: string; before: string; startingAfter?: string; timeRange: number }[] = []
+            
             while (currentStart < now) {
                 const timeRangeMs = now.getTime() - currentStart.getTime()
-                const optimalChunkDays = getOptimalChunkSize(timeRangeMs)
+                const optimalChunkDays = getOptimalChunkSize(timeRangeMs, accountId)
                 
                 const chunkEnd = new Date(currentStart.getTime() + (optimalChunkDays * 24 * 60 * 60 * 1000))
                 const actualEnd = chunkEnd > now ? now : chunkEnd
                 
-                chunks.push({
+                tempChunks.push({
                     since: currentStart.toISOString(),
                     before: actualEnd.toISOString(),
-                    startingAfter: currentStart.getTime() === startDate.getTime() ? lastKnownTransactionId : undefined
+                    startingAfter: currentStart.getTime() === startDate.getTime() ? lastKnownTransactionId : undefined,
+                    timeRange: currentStart.getTime()
                 })
                 
                 // Move to next chunk with 1-second buffer to prevent overlap
                 currentStart = new Date(actualEnd.getTime() + 1000)
             }
+            
+            // Sort chunks by age (oldest first) but boost priority for recent chunks
+            tempChunks.forEach((chunk, index) => {
+                const chunkDate = new Date(chunk.since)
+                const thirtyDaysAgo = new Date(now.getTime() - (30 * 24 * 60 * 60 * 1000))
+                
+                // Recent chunks get higher priority, older chunks get lower priority
+                const priority = chunkDate > thirtyDaysAgo ? 1 : 2 + Math.floor(index / 5)
+                
+                chunks.push({
+                    since: chunk.since,
+                    before: chunk.before,
+                    startingAfter: chunk.startingAfter,
+                    priority
+                })
+            })
+            
+            // Sort by priority (lower number = higher priority)
+            chunks.sort((a, b) => a.priority - b.priority)
         }
         
         return chunks
@@ -218,36 +320,61 @@ export const useTransactions = () => {
         return deduplicated
     }
 
-    // Track API performance metrics
+    // Enhanced API performance metrics with efficiency scoring
     const trackAPIMetrics = (metrics: PaginationMetrics): void => {
         const metricsKey = 'transaction_api_metrics'
         const existingMetrics = JSON.parse(localStorage.getItem(metricsKey) || '[]')
         
+        // Calculate API efficiency score (transactions per request ratio)
+        const efficiencyScore = metrics.totalRequests > 0 ? 
+            (metrics.totalTransactions / metrics.totalRequests) : 0
+        
         const newMetrics = {
             timestamp: Date.now(),
-            ...metrics
+            ...metrics,
+            apiEfficiencyScore: Math.round(efficiencyScore * 100) / 100
         }
         
         existingMetrics.push(newMetrics)
         
-        // Keep only last 10 metrics entries
-        if (existingMetrics.length > 10) {
-            existingMetrics.splice(0, existingMetrics.length - 10)
+        // Keep only last 20 metrics entries for better trend analysis
+        if (existingMetrics.length > 20) {
+            existingMetrics.splice(0, existingMetrics.length - 20)
         }
         
         localStorage.setItem(metricsKey, JSON.stringify(existingMetrics))
+        
+        // Log efficiency improvements
+        if (existingMetrics.length > 1) {
+            const previousMetrics = existingMetrics[existingMetrics.length - 2]
+            const improvementPct = ((efficiencyScore - previousMetrics.apiEfficiencyScore) / previousMetrics.apiEfficiencyScore) * 100
+            
+            if (Math.abs(improvementPct) > 5) {
+                console.log(`API efficiency ${improvementPct > 0 ? 'improved' : 'decreased'} by ${Math.abs(improvementPct).toFixed(1)}% (${efficiencyScore.toFixed(2)} trans/req)`)
+            }
+        }
     }
 
     // Enhanced transaction retrieval with comprehensive error handling and retry logic
     const retrieveTransactions = async (account_id: string, forceRefresh: boolean = false, onProgress?: (state: TransactionSyncState) => void): Promise<Transaction[] | undefined> => {
-        const _startTime = Date.now()
+        const startTime = Date.now()
+        const tokenWindow = getTokenWindow()
         const metrics: PaginationMetrics = {
             totalRequests: 0,
             successfulRequests: 0,
             failedRequests: 0,
             totalTransactions: 0,
             averageResponseTime: 0,
-            errors: []
+            totalSyncTime: 0,
+            apiEfficiencyScore: 0,
+            errors: [],
+            skippedChunks: 0,
+            cacheHits: 0
+        }
+
+        // Prioritize historical data if within token window
+        if (tokenWindow.historicalDataPriority) {
+            console.log(`Token window: ${Math.floor(tokenWindow.remainingWindow / 1000)}s remaining - prioritizing historical data retrieval`)
         }
 
         // Skip throttling checks if forcing refresh
@@ -278,8 +405,20 @@ export const useTransactions = () => {
             .reverse()
             .first()
         
-        const dateRangeChunks = getDateRangeChunks(lastKnownTransaction?.id)
-        console.log(`Fetching transactions in ${dateRangeChunks.length} chunk(s) for account ${account_id}`)
+        const dateRangeChunks = getDateRangeChunks(account_id, lastKnownTransaction?.id)
+        
+        // Apply cache-based filtering to skip known empty chunks
+        const filteredChunks = forceRefresh ? dateRangeChunks : dateRangeChunks.filter(chunk => {
+            const chunkKey = `${account_id}_${chunk.since}_${chunk.before}`
+            const shouldSkip = shouldSkipChunk(chunkKey)
+            if (shouldSkip) {
+                metrics.skippedChunks++
+                metrics.cacheHits++
+            }
+            return !shouldSkip
+        })
+        
+        console.log(`Fetching transactions in ${filteredChunks.length}/${dateRangeChunks.length} chunk(s) for account ${account_id} (${metrics.skippedChunks} skipped from cache)`)
         
         let allTransactions: Transaction[] = []
         
@@ -288,9 +427,9 @@ export const useTransactions = () => {
             if (onProgress) {
                 onProgress({
                     isInProgress: true,
-                    progress: (currentChunk / dateRangeChunks.length) * 100,
+                    progress: (currentChunk / filteredChunks.length) * 100,
                     currentChunk,
-                    totalChunks: dateRangeChunks.length,
+                    totalChunks: filteredChunks.length,
                     error
                 })
             }
@@ -300,8 +439,9 @@ export const useTransactions = () => {
             updateProgress(0)
             
             // Process each date range chunk with retry logic
-            for (let i = 0; i < dateRangeChunks.length; i++) {
-                const { since, before, startingAfter } = dateRangeChunks[i]
+            for (let i = 0; i < filteredChunks.length; i++) {
+                const { since, before, startingAfter } = filteredChunks[i]
+                const chunkKey = `${account_id}_${since}_${before}`
                 
                 // Construct URL with cursor-based pagination if available
                 let url = `?expand[]=merchant&limit=100&since=${since}&before=${before}&account_id=${account_id}`
@@ -309,7 +449,7 @@ export const useTransactions = () => {
                     url += `&starting_after=${startingAfter}`
                 }
                 
-                console.log(`Fetching chunk ${i + 1}/${dateRangeChunks.length}: ${since} to ${before}`)
+                console.log(`Fetching chunk ${i + 1}/${filteredChunks.length}: ${since} to ${before}`)
                 
                 let chunkSuccess = false
                 let lastError: any = null
@@ -329,12 +469,19 @@ export const useTransactions = () => {
                             metrics.totalTransactions += response.transactions.length
                             metrics.averageResponseTime = ((metrics.averageResponseTime * (metrics.successfulRequests - 1)) + requestTime) / metrics.successfulRequests
                             
+                            // Update chunk cache with successful result
+                            updateChunkCache(chunkKey, response.transactions.length === 0, response.transactions.length)
+                            
                             console.log(`Chunk ${i + 1} retrieved ${response.transactions.length} transactions in ${requestTime}ms`)
                             chunkSuccess = true
                             break
                         } else {
                             console.log(`Chunk ${i + 1} returned no transactions`)
                             metrics.successfulRequests++
+                            
+                            // Cache empty result to avoid future calls
+                            updateChunkCache(chunkKey, true, 0)
+                            
                             chunkSuccess = true
                             break
                         }
@@ -378,10 +525,17 @@ export const useTransactions = () => {
                 // Update progress
                 updateProgress(i + 1, !chunkSuccess ? lastError?.message : undefined)
                 
-                // Add intelligent delay between requests
-                if (i < dateRangeChunks.length - 1) {
-                    // Adaptive delay based on previous response times
-                    const adaptiveDelay = Math.min(1000, Math.max(200, metrics.averageResponseTime * 0.5))
+                // Add intelligent delay between requests with token window consideration
+                if (i < filteredChunks.length - 1) {
+                    // Adaptive delay based on previous response times and token window
+                    let adaptiveDelay = Math.min(1000, Math.max(200, metrics.averageResponseTime * 0.5))
+                    
+                    // Reduce delay if we're in the token window to maximize historical data retrieval
+                    if (tokenWindow.historicalDataPriority && tokenWindow.remainingWindow < 120000) { // Less than 2 minutes
+                        adaptiveDelay = Math.min(adaptiveDelay, 100) // Aggressive mode
+                        console.log('Token window closing - reducing delay to maximize historical data retrieval')
+                    }
+                    
                     await sleep(adaptiveDelay)
                 }
             }
@@ -389,8 +543,14 @@ export const useTransactions = () => {
             // Deduplicate transactions to ensure data integrity
             const deduplicatedTransactions = deduplicateTransactions(allTransactions)
             metrics.totalTransactions = deduplicatedTransactions.length
+            metrics.totalSyncTime = Date.now() - startTime
+            
+            // Calculate and log efficiency metrics
+            const efficiencyScore = metrics.totalRequests > 0 ? metrics.totalTransactions / metrics.totalRequests : 0
+            const timeSaved = metrics.skippedChunks * (metrics.averageResponseTime || 500) // Estimate time saved from cache
             
             console.log(`Total transactions retrieved for account ${account_id}: ${deduplicatedTransactions.length}`)
+            console.log(`API Efficiency: ${efficiencyScore.toFixed(2)} transactions/request, ${metrics.skippedChunks} chunks skipped, ~${Math.round(timeSaved)}ms saved`)
             
             if (deduplicatedTransactions.length > 0) {
                 // Update last pull timestamp
@@ -407,21 +567,23 @@ export const useTransactions = () => {
                     onProgress({
                         isInProgress: false,
                         progress: 100,
-                        currentChunk: dateRangeChunks.length,
-                        totalChunks: dateRangeChunks.length
+                        currentChunk: filteredChunks.length,
+                        totalChunks: filteredChunks.length
                     })
                 }
                 
                 return deduplicatedTransactions
             }
             
-            // Even if no transactions, mark as complete
+            // Even if no transactions, mark as complete and track metrics
+            trackAPIMetrics(metrics)
+            
             if (onProgress) {
                 onProgress({
                     isInProgress: false,
                     progress: 100,
-                    currentChunk: dateRangeChunks.length,
-                    totalChunks: dateRangeChunks.length
+                    currentChunk: filteredChunks.length,
+                    totalChunks: filteredChunks.length
                 })
             }
             
@@ -435,7 +597,7 @@ export const useTransactions = () => {
                     isInProgress: false,
                     progress: 0,
                     currentChunk: 0,
-                    totalChunks: dateRangeChunks.length,
+                    totalChunks: filteredChunks.length,
                     error: err instanceof Error ? err.message : 'Unknown error'
                 })
             }
@@ -478,6 +640,50 @@ export const useTransactions = () => {
     // Clear API metrics
     const clearAPIMetrics = (): void => {
         localStorage.removeItem('transaction_api_metrics')
+    }
+
+    // Clear chunk cache for fresh starts
+    const clearChunkCache = (): void => {
+        localStorage.removeItem('transaction_chunk_cache')
+        console.log('Transaction chunk cache cleared')
+    }
+
+    // Get efficiency analytics for monitoring dashboard
+    const getEfficiencyAnalytics = (): { 
+        averageEfficiency: number; 
+        trend: 'improving' | 'declining' | 'stable';
+        totalTimeSaved: number;
+        cacheHitRate: number;
+    } => {
+        const metrics = getAPIMetrics()
+        if (metrics.length < 2) {
+            return { averageEfficiency: 0, trend: 'stable', totalTimeSaved: 0, cacheHitRate: 0 }
+        }
+
+        const totalEfficiency = metrics.reduce((sum, m) => sum + (m.apiEfficiencyScore || 0), 0)
+        const averageEfficiency = totalEfficiency / metrics.length
+
+        // Calculate trend
+        const recent = metrics.slice(-3).reduce((sum, m) => sum + (m.apiEfficiencyScore || 0), 0) / 3
+        const older = metrics.slice(-6, -3).reduce((sum, m) => sum + (m.apiEfficiencyScore || 0), 0) / 3
+        
+        let trend: 'improving' | 'declining' | 'stable' = 'stable'
+        const improvementThreshold = 0.1
+        if (recent - older > improvementThreshold) trend = 'improving'
+        else if (older - recent > improvementThreshold) trend = 'declining'
+
+        // Calculate total time saved from caching
+        const totalTimeSaved = metrics.reduce((sum, m) => {
+            const estimatedTimePerSkip = m.averageResponseTime || 500
+            return sum + ((m.skippedChunks || 0) * estimatedTimePerSkip)
+        }, 0)
+
+        // Calculate cache hit rate
+        const totalChunks = metrics.reduce((sum, m) => sum + (m.totalRequests || 0) + (m.skippedChunks || 0), 0)
+        const totalSkipped = metrics.reduce((sum, m) => sum + (m.skippedChunks || 0), 0)
+        const cacheHitRate = totalChunks > 0 ? (totalSkipped / totalChunks) * 100 : 0
+
+        return { averageEfficiency, trend, totalTimeSaved, cacheHitRate }
     }
 
     // Enhanced incremental sync for ongoing updates
@@ -559,6 +765,9 @@ export const useTransactions = () => {
         isTokenStale,
         getAPIMetrics,
         clearAPIMetrics,
+        clearChunkCache,
+        getEfficiencyAnalytics,
+        getTokenWindow,
         wasRecentlyPulled
     }
 }
