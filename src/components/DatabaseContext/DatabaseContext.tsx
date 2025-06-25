@@ -2,7 +2,7 @@ import { ReactElement, createContext, FC, useContext } from "react"
 import Dexie, { Table } from 'dexie';
 import { Account } from "types/Account";
 import { Transaction } from "types/Transactions";
-import { Budget, BudgetCategory, Debt, Bill, DebtPayment, BillPayment, BudgetTarget } from "types/Budget";
+import { Budget, BudgetCategory, Debt, Bill, DebtPayment, BillPayment, BudgetTarget, CreditorMatchingRule, DebtTransactionMatch, DebtPaymentHistory } from "types/Budget";
 
 export class MySubClassedDexie extends Dexie {
     accounts!: Table<Account>;
@@ -14,6 +14,9 @@ export class MySubClassedDexie extends Dexie {
     debtPayments!: Table<DebtPayment>;
     billPayments!: Table<BillPayment>;
     budgetTargets!: Table<BudgetTarget>;
+    creditorMatchingRules!: Table<CreditorMatchingRule>;
+    debtTransactionMatches!: Table<DebtTransactionMatch>;
+    debtPaymentHistory!: Table<DebtPaymentHistory>;
 
     constructor() {
         super('monzoflow');
@@ -32,6 +35,21 @@ export class MySubClassedDexie extends Dexie {
             debtPayments: '++id, debtId, paymentDate',
             billPayments: '++id, billId, paymentDate, status',
             budgetTargets: '++id, budgetId, targetType, status, targetDate'
+        });
+
+        this.version(3).stores({
+            accounts: '++id',
+            transactions: '++id, account_id, include_in_spending, amount',
+            budgets: '++id, year, name',
+            budgetCategories: '++id, budgetId, category, name',
+            debts: '++id, status, priority, dueDate',
+            bills: '++id, status, frequency, nextDueDate, category',
+            debtPayments: '++id, debtId, paymentDate',
+            billPayments: '++id, billId, paymentDate, status',
+            budgetTargets: '++id, budgetId, targetType, status, targetDate',
+            creditorMatchingRules: '++id, debtId, type, enabled',
+            debtTransactionMatches: '++id, transactionId, debtId, matchStatus, matchType',
+            debtPaymentHistory: '++id, debtId, transactionId, paymentDate, isAutomatic'
         });
 
         // Add error handling for database version conflicts

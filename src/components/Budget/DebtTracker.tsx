@@ -3,11 +3,15 @@ import { useDatabase } from 'components/DatabaseContext/DatabaseContext';
 import { Debt, DebtPayment } from 'types/Budget';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { format, differenceInDays, addMonths } from 'date-fns';
+import { CreditorMatchingManager } from './CreditorMatchingManager';
+import { DebtMatchingService } from 'services/DebtMatchingService';
+import { useAutomaticDebtMatching } from 'hooks/useAutomaticDebtMatching';
 
 export const DebtTracker: FC = () => {
     const db = useDatabase();
     const [showAddDebt, setShowAddDebt] = useState(false);
     const [showPaymentModal, setShowPaymentModal] = useState<string | null>(null);
+    const [showMatchingManager, setShowMatchingManager] = useState<string | null>(null);
     const [newDebt, setNewDebt] = useState<Partial<Debt>>({
         name: '',
         creditor: '',
@@ -21,9 +25,21 @@ export const DebtTracker: FC = () => {
 
     const debts = useLiveQuery(() => db.debts.orderBy('priority').reverse().toArray());
     const debtPayments = useLiveQuery(() => db.debtPayments.orderBy('paymentDate').reverse().toArray());
+    const pendingMatches = useLiveQuery(() => db.debtTransactionMatches.where('matchStatus').equals('pending').toArray());
+    const paymentHistory = useLiveQuery(() => db.debtPaymentHistory.orderBy('paymentDate').reverse().toArray());
+    
+    const { processAllTransactions, processLatestTransactions, isReady } = useAutomaticDebtMatching();
 
     const getDebtPayments = (debtId: string) => {
         return debtPayments?.filter(payment => payment.debtId === debtId) || [];
+    };
+
+    const getDebtPaymentHistory = (debtId: string) => {
+        return paymentHistory?.filter(payment => payment.debtId === debtId) || [];
+    };
+
+    const getDebtPendingMatches = (debtId: string) => {
+        return pendingMatches?.filter(match => match.debtId === debtId) || [];
     };
 
     const calculatePayoffTime = (debt: Debt) => {
@@ -65,6 +81,13 @@ export const DebtTracker: FC = () => {
         };
 
         await db.debts.add(debt);
+        
+        // Create default matching rules for the new debt
+        const defaultRules = DebtMatchingService.createDefaultMatchingRules(debt);
+        for (const rule of defaultRules) {
+            await db.creditorMatchingRules.add(rule);
+        }
+        
         setNewDebt({
             name: '',
             creditor: '',
@@ -119,15 +142,24 @@ export const DebtTracker: FC = () => {
             <div className="bg-white shadow rounded-lg p-6">
                 <div className="flex justify-between items-center mb-4">
                     <h2 className="text-2xl font-bold text-gray-900">Debt Tracker</h2>
-                    <button
-                        onClick={() => setShowAddDebt(true)}
-                        className="bg-blue-500 text-white px-4 py-2 rounded-md hover:bg-blue-600"
-                    >
-                        Add Debt
-                    </button>
+                    <div className="flex space-x-3">
+                        <button
+                            onClick={() => processLatestTransactions(100)}
+                            disabled={!isReady}
+                            className="bg-purple-500 text-white px-4 py-2 rounded-md hover:bg-purple-600 disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                            Scan Transactions
+                        </button>
+                        <button
+                            onClick={() => setShowAddDebt(true)}
+                            className="bg-blue-500 text-white px-4 py-2 rounded-md hover:bg-blue-600"
+                        >
+                            Add Debt
+                        </button>
+                    </div>
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                     <div className="text-center">
                         <p className="text-3xl font-bold text-red-600">£{getTotalDebt().toLocaleString()}</p>
                         <p className="text-sm text-gray-600">Total Debt</p>
@@ -139,6 +171,10 @@ export const DebtTracker: FC = () => {
                     <div className="text-center">
                         <p className="text-3xl font-bold text-blue-600">{debts?.filter(d => d.status === 'active').length || 0}</p>
                         <p className="text-sm text-gray-600">Active Debts</p>
+                    </div>
+                    <div className="text-center">
+                        <p className="text-3xl font-bold text-purple-600">{pendingMatches?.length || 0}</p>
+                        <p className="text-sm text-gray-600">Pending Matches</p>
                     </div>
                 </div>
             </div>
@@ -153,6 +189,9 @@ export const DebtTracker: FC = () => {
                             ? ((debt.originalAmount - debt.currentBalance) / debt.originalAmount) * 100 
                             : 0;
 
+                        const debtPendingMatches = getDebtPendingMatches(debt.id);
+                        const debtPaymentHistory = getDebtPaymentHistory(debt.id);
+
                         return (
                             <div key={debt.id} className="bg-white shadow rounded-lg p-6">
                                 <div className="flex justify-between items-start mb-4">
@@ -161,6 +200,13 @@ export const DebtTracker: FC = () => {
                                         <p className="text-sm text-gray-600">{debt.creditor}</p>
                                         {debt.description && (
                                             <p className="text-sm text-gray-500 mt-1">{debt.description}</p>
+                                        )}
+                                        {debtPendingMatches.length > 0 && (
+                                            <div className="mt-2">
+                                                <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
+                                                    {debtPendingMatches.length} pending match{debtPendingMatches.length > 1 ? 'es' : ''}
+                                                </span>
+                                            </div>
                                         )}
                                     </div>
                                     <div className="flex items-center space-x-2">
@@ -218,23 +264,49 @@ export const DebtTracker: FC = () => {
                                     </div>
                                     
                                     {debt.status === 'active' && (
-                                        <button
-                                            onClick={() => setShowPaymentModal(debt.id)}
-                                            className="bg-green-500 text-white px-4 py-2 rounded-md hover:bg-green-600"
-                                        >
-                                            Make Payment
-                                        </button>
+                                        <div className="flex space-x-2">
+                                            <button
+                                                onClick={() => setShowMatchingManager(debt.id)}
+                                                className="bg-purple-500 text-white px-3 py-2 rounded-md hover:bg-purple-600 text-sm"
+                                            >
+                                                Auto Match
+                                            </button>
+                                            <button
+                                                onClick={() => setShowPaymentModal(debt.id)}
+                                                className="bg-green-500 text-white px-4 py-2 rounded-md hover:bg-green-600"
+                                            >
+                                                Make Payment
+                                            </button>
+                                        </div>
                                     )}
                                 </div>
 
                                 {/* Recent Payments */}
-                                {payments.length > 0 && (
+                                {(payments.length > 0 || debtPaymentHistory.length > 0) && (
                                     <div className="mt-4 pt-4 border-t border-gray-200">
                                         <h4 className="text-sm font-medium text-gray-900 mb-2">Recent Payments</h4>
                                         <div className="space-y-1">
-                                            {payments.slice(0, 3).map(payment => (
+                                            {/* Show automatic payments first */}
+                                            {debtPaymentHistory.slice(0, 2).map(payment => (
                                                 <div key={payment.id} className="flex justify-between text-sm text-gray-600">
-                                                    <span>{format(new Date(payment.paymentDate), 'MMM dd, yyyy')}</span>
+                                                    <div className="flex items-center space-x-2">
+                                                        <span>{format(new Date(payment.paymentDate), 'MMM dd, yyyy')}</span>
+                                                        <span className="px-1 py-0.5 text-xs bg-purple-100 text-purple-800 rounded">
+                                                            Auto
+                                                        </span>
+                                                    </div>
+                                                    <span>£{(payment.amount / 100).toFixed(2)}</span>
+                                                </div>
+                                            ))}
+                                            {/* Show manual payments */}
+                                            {payments.slice(0, Math.max(1, 3 - debtPaymentHistory.length)).map(payment => (
+                                                <div key={payment.id} className="flex justify-between text-sm text-gray-600">
+                                                    <div className="flex items-center space-x-2">
+                                                        <span>{format(new Date(payment.paymentDate), 'MMM dd, yyyy')}</span>
+                                                        <span className="px-1 py-0.5 text-xs bg-gray-100 text-gray-800 rounded">
+                                                            Manual
+                                                        </span>
+                                                    </div>
                                                     <span>£{payment.amount.toLocaleString()}</span>
                                                 </div>
                                             ))}
@@ -349,6 +421,14 @@ export const DebtTracker: FC = () => {
                     debt={debts?.find(d => d.id === showPaymentModal)!}
                     onPayment={handlePayment}
                     onClose={() => setShowPaymentModal(null)}
+                />
+            )}
+
+            {/* Creditor Matching Manager */}
+            {showMatchingManager && (
+                <CreditorMatchingManager
+                    debt={debts?.find(d => d.id === showMatchingManager)!}
+                    onClose={() => setShowMatchingManager(null)}
                 />
             )}
         </div>
