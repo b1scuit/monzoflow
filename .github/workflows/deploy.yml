@@ -1,0 +1,202 @@
+name: Deploy to Firebase
+
+on:
+  # Deploy on PR merge
+  pull_request:
+    types: [closed]
+    branches: [main]
+  # Deploy on direct push to main branch
+  push:
+    branches: [main]
+
+jobs:
+  deploy:
+    # Run on PR merge or direct push to main
+    if: github.event.pull_request.merged == true || github.event_name == 'push'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 'lts/*'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Validate Firebase configuration
+        run: |
+          echo "Validating Firebase configuration..."
+          if [ -f "firebase.json" ]; then
+            echo "✓ firebase.json found"
+          else
+            echo "✗ firebase.json not found"
+            exit 1
+          fi
+          
+          if [ -f ".firebaserc" ]; then
+            echo "✓ .firebaserc found"
+            cat .firebaserc
+          else
+            echo "✗ .firebaserc not found"
+            exit 1
+          fi
+
+      - name: Load secrets from 1Password
+        uses: 1password/load-secrets-action@v2
+        with:
+          export-env: true
+        env:
+          OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
+
+      - name: Create environment configuration
+        run: |
+          if [ "${{ github.event_name }}" == "pull_request" ]; then
+            # Create staging environment from secrets
+            cat > .env.staging << EOF
+          NEXT_PUBLIC_FIREBASE_API_KEY="$NEXT_PUBLIC_FIREBASE_API_KEY"
+          NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN="$NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN"
+          NEXT_PUBLIC_FIREBASE_PROJECT_ID="$NEXT_PUBLIC_FIREBASE_PROJECT_ID"
+          NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET="$NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET"
+          NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID="$NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID"
+          NEXT_PUBLIC_FIREBASE_APP_ID="$NEXT_PUBLIC_FIREBASE_APP_ID"
+          EOF
+            echo "Created .env.staging for staging deployment"
+          else
+            # Use existing production environment file
+            if [ -f ".env.prod" ]; then
+              cp .env.prod .env.local
+              echo "Using existing .env.prod for production deployment"
+            else
+              echo "Warning: .env.prod file not found"
+            fi
+          fi
+
+      - name: Extract Jira ticket number
+        id: jira-ticket
+        run: |
+          JIRA_TICKET=""
+          
+          # For PR events, check PR title and branch name
+          if [ "${{ github.event_name }}" == "pull_request" ]; then
+            JIRA_TICKET=$(echo "${{ github.event.pull_request.title }}" | grep -oE '[A-Z]+-[0-9]+' | head -1 || echo "")
+            if [ -z "$JIRA_TICKET" ]; then
+              JIRA_TICKET=$(echo "${{ github.event.pull_request.head.ref }}" | grep -oE '[A-Z]+-[0-9]+' | head -1 || echo "")
+            fi
+          fi
+          
+          # For push events, check commit message and branch name
+          if [ "${{ github.event_name }}" == "push" ]; then
+            JIRA_TICKET=$(echo "${{ github.event.head_commit.message }}" | grep -oE '[A-Z]+-[0-9]+' | head -1 || echo "")
+            if [ -z "$JIRA_TICKET" ]; then
+              JIRA_TICKET=$(echo "${{ github.ref_name }}" | grep -oE '[A-Z]+-[0-9]+' | head -1 || echo "")
+            fi
+          fi
+          
+          # Default fallback
+          if [ -z "$JIRA_TICKET" ]; then
+            JIRA_TICKET="no-ticket"
+          fi
+          
+          echo "ticket=$JIRA_TICKET" >> $GITHUB_OUTPUT
+          echo "Found Jira ticket: $JIRA_TICKET"
+
+      - name: Set deployment environment
+        id: env-config
+        run: |
+          echo "Event name: ${{ github.event_name }}"
+          
+          if [ "${{ github.event_name }}" == "pull_request" ]; then
+            echo "Configuring for STAGING deployment"
+            echo "environment=staging" >> $GITHUB_OUTPUT
+            echo "project_id=flowly-staging" >> $GITHUB_OUTPUT
+            echo "service_account_secret=FIREBASE_SERVICE_ACCOUNT_FLOWLY_STAGING" >> $GITHUB_OUTPUT
+            echo "url=https://flowly-staging.web.app" >> $GITHUB_OUTPUT
+          else
+            echo "Configuring for PRODUCTION deployment"
+            echo "environment=production" >> $GITHUB_OUTPUT
+            echo "project_id=monzo-flow" >> $GITHUB_OUTPUT
+            echo "service_account_secret=FIREBASE_SERVICE_ACCOUNT_MONZO_FLOW" >> $GITHUB_OUTPUT
+            echo "url=https://monzo-flow.web.app" >> $GITHUB_OUTPUT
+          fi
+          
+          echo "Deployment configured for: $([ "${{ github.event_name }}" == "pull_request" ] && echo "staging" || echo "production")"
+
+      - name: Create GitHub deployment
+        id: deployment
+        uses: actions/github-script@v7
+        with:
+          script: |
+            let description = '';
+            if (context.eventName === 'pull_request') {
+              description = `Deployment for ${{ steps.jira-ticket.outputs.ticket }} from PR #${{ github.event.pull_request.number }} to staging`;
+            } else {
+              description = `Deployment for ${{ steps.jira-ticket.outputs.ticket }} from push to main to production`;
+            }
+            
+            const deployment = await github.rest.repos.createDeployment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              ref: context.sha,
+              environment: '${{ steps.env-config.outputs.environment }}',
+              description: description,
+              auto_merge: false,
+              required_contexts: []
+            });
+            return deployment.data.id;
+
+      - name: Set deployment status to in progress
+        uses: actions/github-script@v7
+        with:
+          script: |
+            await github.rest.repos.createDeploymentStatus({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              deployment_id: ${{ steps.deployment.outputs.result }},
+              state: 'in_progress',
+              description: 'Running deployment to ${{ steps.env-config.outputs.environment }}...'
+            });
+
+      - name: Build and deploy to Firebase
+        id: deploy
+        uses: FirebaseExtended/action-hosting-deploy@v0
+        with:
+          repoToken: ${{ secrets.GITHUB_TOKEN }}
+          firebaseServiceAccount: ${{ github.event_name == 'pull_request' && secrets.FIREBASE_SERVICE_ACCOUNT_FLOWLY_STAGING || secrets.FIREBASE_SERVICE_ACCOUNT_MONZO_FLOW }}
+          channelId: live
+          projectId: ${{ steps.env-config.outputs.project_id }}
+        env:
+          FIREBASE_CLI_EXPERIMENTS: webframework,webframeworks
+
+      - name: Set deployment status (success/failure)
+        if: always()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const outcome = "${{ steps.deploy.outcome }}";
+            const state = outcome === "success" ? "success" : "failure";
+            const environment = "${{ steps.env-config.outputs.environment }}";
+            const url = "${{ steps.env-config.outputs.url }}";
+            
+            await github.rest.repos.createDeploymentStatus({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              deployment_id: ${{ steps.deployment.outputs.result }},
+              state,
+              description: state === "success" ? `Successfully deployed to ${environment}` : `Deployment to ${environment} failed`,
+              environment_url: state === "success" ? url : undefined
+            });
+
+      - name: Clean up secrets and environment files
+        if: always()
+        run: |
+          rm -f firebase-service-account.json .env.staging .env.local
+          echo "Cleaned up temporary files"
+
+      - name: Fail job if deployment failed
+        if: steps.deploy.outcome == 'failure'
+        run: exit 1
