@@ -8,6 +8,7 @@ import { useDatabase } from 'components/DatabaseContext/DatabaseContext';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { Budget } from 'types/Budget';
 import { BudgetCalculationService } from 'services/BudgetCalculationService';
+import { FloatingActionButtons, useFABPresets } from 'components/UI/FloatingActionButtons';
 
 const BudgetPage: FC = () => {
     const [activeTab, setActiveTab] = useState<'overview' | 'categories' | 'debt' | 'bills' | 'yearly'>('overview');
@@ -25,6 +26,7 @@ const BudgetPage: FC = () => {
         includeSmallCategories: false
     });
     const db = useDatabase();
+    const { budgetPageFABs } = useFABPresets();
 
     // Get the first budget for the selected year to pass to category manager
     const selectedBudget = useLiveQuery(
@@ -236,6 +238,9 @@ const BudgetPage: FC = () => {
             <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
                 {renderContent()}
             </div>
+
+            {/* Floating Action Buttons */}
+            <FloatingActionButtons buttons={budgetPageFABs()} />
 
             {/* Help/Info Section */}
             <div className="bg-blue-50 border-t border-blue-200 mt-12">

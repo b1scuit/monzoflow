@@ -11,6 +11,7 @@ import { FC, useEffect, useState, useCallback } from "react";
 import { Account, Owners } from "types/Account";
 import { Transaction } from "types/Transactions";
 import { useLiveQuery } from "dexie-react-hooks";
+import { FloatingActionButtons, useFABPresets } from "components/UI/FloatingActionButtons";
 
 
 const renderName = (account: Account): string => {
@@ -65,6 +66,7 @@ export const Index: FC = () => {
     const [loadingMessage, setLoadingMessage] = useState<string>('Initializing...')
     const db = useDatabase();
     const { retrieveAccounts } = useAccounts();
+    const { dashboardFABs } = useFABPresets();
     const { retrieveTransactions, forceRefreshAllTransactions, loading: transactionLoading } = useTransactions();
     
     // Live queries for real-time updates
@@ -529,31 +531,8 @@ export const Index: FC = () => {
                 )}
             </div>
 
-            {/* Quick Actions Floating Button */}
-            <div className="fixed bottom-6 right-6">
-                <div className="flex flex-col space-y-2">
-                    <button 
-                        onClick={() => window.location.href = '/settings'}
-                        className="bg-gray-500 text-white p-3 rounded-full shadow-lg hover:bg-gray-600 transition-colors"
-                        title="Settings"
-                    >
-                        <span className="text-xl">⚙️</span>
-                    </button>
-                    <button 
-                        className="bg-blue-500 text-white p-3 rounded-full shadow-lg hover:bg-blue-600 transition-colors"
-                        title="Cards"
-                    >
-                        <span className="text-xl">💳</span>
-                    </button>
-                    <button 
-                        onClick={() => window.location.href = '/budget'}
-                        className="bg-green-500 text-white p-3 rounded-full shadow-lg hover:bg-green-600 transition-colors"
-                        title="Budget"
-                    >
-                        <span className="text-xl">📊</span>
-                    </button>
-                </div>
-            </div>
+            {/* Floating Action Buttons */}
+            <FloatingActionButtons buttons={dashboardFABs()} />
         </div>
     )
 }

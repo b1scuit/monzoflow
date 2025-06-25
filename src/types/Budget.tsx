@@ -91,3 +91,46 @@ export interface BudgetTarget {
     created: string;
     updated: string;
 }
+
+export interface CreditorMatchingRule {
+    id: string;
+    debtId: string;
+    type: 'exact' | 'pattern' | 'fuzzy' | 'account';
+    field: 'merchant_name' | 'counterparty_name' | 'description' | 'account_number';
+    value: string;
+    pattern?: string; // For regex patterns
+    confidenceThreshold: number; // 0-100
+    enabled: boolean;
+    created: string;
+    updated: string;
+}
+
+export interface DebtTransactionMatch {
+    id: string;
+    transactionId: string;
+    debtId: string;
+    ruleId: string;
+    matchConfidence: number; // 0-100
+    matchStatus: 'pending' | 'confirmed' | 'rejected';
+    matchType: 'automatic' | 'manual' | 'user_confirmed';
+    matchedField: string;
+    matchedValue: string;
+    reviewedBy?: string;
+    reviewedAt?: string;
+    created: string;
+    updated: string;
+}
+
+export interface DebtPaymentHistory {
+    id: string;
+    debtId: string;
+    transactionId: string;
+    amount: number;
+    paymentDate: string;
+    principalAmount?: number;
+    interestAmount?: number;
+    balanceAfter: number;
+    paymentType: 'regular' | 'extra' | 'minimum' | 'final';
+    isAutomatic: boolean;
+    created: string;
+}
