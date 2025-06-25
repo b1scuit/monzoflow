@@ -104,6 +104,7 @@ jobs:
           REACT_APP_MONZO_REDIRECT_URI: ${{ secrets.REACT_APP_MONZO_REDIRECT_URI }}
           # Firebase Functions Environment Variables
           REACT_APP_MONZO_CLIENT_SECRET: ${{ secrets.REACT_APP_MONZO_CLIENT_SECRET }}
+          CI: false
 
       - name: Set deployment status (success/failure)
         if: always()
