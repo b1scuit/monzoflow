@@ -118,13 +118,6 @@ export const Header: FC<HeaderProps> = ({
 
                     {/* Right Side Actions */}
                     <div className="flex items-center space-x-4">
-                        {/* Environment Flag */}
-                        <div className="hidden sm:block">
-                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800">
-                                <EnvironmentFlag />
-                            </span>
-                        </div>
-
                         {/* User Menu */}
                         <div className="relative">
                             <button
