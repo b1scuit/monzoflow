@@ -12,7 +12,7 @@ import Display from "./pages/display/index";
 import Budget from "./pages/budget/index";
 import Settings from "./pages/settings/index";
 import PrivacyPolicy from './pages/privacy-policy/index'
-import AllowAcces from './pages/allowAccess/index';
+import AllowAccess from './pages/allowAccess/index';
 
 const router = createBrowserRouter([
     {
@@ -29,7 +29,7 @@ const router = createBrowserRouter([
     },
     {
         path: "/allow-access",
-        element: <Default><AllowAcces /></Default>
+        element: <Default><AllowAccess /></Default>
     },
     {
         path: "/display",
