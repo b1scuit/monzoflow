@@ -4,6 +4,7 @@ import { useDatabase } from 'components/DatabaseContext/DatabaseContext';
 import { Budget, BudgetCategory } from 'types/Budget';
 import { Transaction } from 'types/Transactions';
 import { BudgetCalculationService, BudgetPeriod, CategoryMappingRule } from 'services/BudgetCalculationService';
+import { MonthlyCycleConfig } from 'types/UserPreferences';
 
 export interface BudgetCalculationHookResult {
     budgetCategories: BudgetCategory[];
@@ -24,10 +25,11 @@ export interface UseBudgetCalculationOptions {
     period?: BudgetPeriod;
     customMappings?: CategoryMappingRule[];
     autoRefresh?: boolean;
+    monthlyCycleConfig?: MonthlyCycleConfig;
 }
 
 export const useBudgetCalculation = (options: UseBudgetCalculationOptions): BudgetCalculationHookResult => {
-    const { budget, period, customMappings, autoRefresh = true } = options;
+    const { budget, period, customMappings, autoRefresh = true, monthlyCycleConfig } = options;
     const db = useDatabase();
     
     const [isLoading, setIsLoading] = useState(true);
@@ -45,8 +47,14 @@ export const useBudgetCalculation = (options: UseBudgetCalculationOptions): Budg
         []
     );
 
-    // Calculate budget period if not provided
-    const calculationPeriod = period || (budget ? BudgetCalculationService.getBudgetPeriod(budget) : BudgetCalculationService.getCurrentMonthPeriod());
+    // Calculate budget period if not provided, considering custom monthly cycles
+    const calculationPeriod = period || (budget ? 
+        BudgetCalculationService.getBudgetPeriodWithCustomCycle(budget, monthlyCycleConfig) : 
+        (monthlyCycleConfig ? 
+            BudgetCalculationService.getCurrentCustomMonthlyPeriod(monthlyCycleConfig) :
+            BudgetCalculationService.getCurrentMonthPeriod()
+        )
+    );
 
     // Calculate totals
     const totalBudgeted = budgetCategories?.reduce((sum, cat) => sum + cat.allocatedAmount, 0) || 0;

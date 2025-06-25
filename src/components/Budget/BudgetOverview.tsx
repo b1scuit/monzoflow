@@ -2,8 +2,9 @@ import { FC, useState, useEffect } from 'react';
 import { useDatabase } from 'components/DatabaseContext/DatabaseContext';
 import { Budget } from 'types/Budget';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { format } from 'date-fns';
 import { useBudgetCalculation } from 'hooks/useBudgetCalculation';
+import { useUserPreferences } from 'hooks/useUserPreferences';
+import { getCurrentMonthlyPeriod } from 'utils/dateUtils';
 
 interface BudgetOverviewProps {
     year: number;
@@ -13,12 +14,17 @@ interface BudgetOverviewProps {
 export const BudgetOverview: FC<BudgetOverviewProps> = ({ year, onCreateBudget }) => {
     const db = useDatabase();
     const [selectedBudget, setSelectedBudget] = useState<Budget | null>(null);
+    const [currentPeriodInfo, setCurrentPeriodInfo] = useState<string>('');
     
     const budgets = useLiveQuery(() => db.budgets.where('year').equals(year).toArray(), [year]);
     const debts = useLiveQuery(() => db.debts.where('status').equals('active').toArray());
     const bills = useLiveQuery(() => db.bills.where('status').equals('active').toArray());
+    const { getMonthlyCycleConfig, loading: preferencesLoading } = useUserPreferences();
 
-    // Use the new budget calculation hook
+    // Get monthly cycle config
+    const monthlyCycleConfig = getMonthlyCycleConfig();
+
+    // Use the new budget calculation hook with custom monthly cycle support
     const {
         budgetCategories,
         totalBudgeted,
@@ -30,6 +36,7 @@ export const BudgetOverview: FC<BudgetOverviewProps> = ({ year, onCreateBudget }
         refreshBudgetCalculations
     } = useBudgetCalculation({ 
         budget: selectedBudget,
+        monthlyCycleConfig,
         autoRefresh: true 
     });
 
@@ -38,6 +45,26 @@ export const BudgetOverview: FC<BudgetOverviewProps> = ({ year, onCreateBudget }
             setSelectedBudget(budgets[0]);
         }
     }, [budgets, selectedBudget]);
+
+    // Update current period info when preferences change
+    useEffect(() => {
+        if (!preferencesLoading) {
+            try {
+                const period = getCurrentMonthlyPeriod(monthlyCycleConfig);
+                const startStr = period.startDate.toLocaleDateString('en-GB', { 
+                    day: 'numeric', 
+                    month: 'short' 
+                });
+                const endStr = period.endDate.toLocaleDateString('en-GB', { 
+                    day: 'numeric', 
+                    month: 'short' 
+                });
+                setCurrentPeriodInfo(`Current period: ${startStr} - ${endStr}`);
+            } catch (err) {
+                setCurrentPeriodInfo('Current period: Standard monthly cycle');
+            }
+        }
+    }, [monthlyCycleConfig, preferencesLoading]);
 
     const calculateTotalDebt = () => {
         return debts?.reduce((sum, debt) => sum + debt.currentBalance, 0) || 0;
@@ -63,7 +90,12 @@ export const BudgetOverview: FC<BudgetOverviewProps> = ({ year, onCreateBudget }
             {/* Budget Selection */}
             <div className="bg-white shadow rounded-lg p-6">
                 <div className="flex justify-between items-center mb-4">
-                    <h2 className="text-2xl font-bold text-gray-900">Budget Overview - {year}</h2>
+                    <div>
+                        <h2 className="text-2xl font-bold text-gray-900">Budget Overview - {year}</h2>
+                        {currentPeriodInfo && (
+                            <p className="text-sm text-gray-600 mt-1">{currentPeriodInfo}</p>
+                        )}
+                    </div>
                     {selectedBudget && (
                         <button
                             onClick={refreshBudgetCalculations}

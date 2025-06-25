@@ -1,6 +1,8 @@
 import { Transaction } from 'types/Transactions';
 import { Budget, BudgetCategory } from 'types/Budget';
 import { isWithinInterval, startOfYear, endOfYear, startOfMonth, endOfMonth } from 'date-fns';
+import { MonthlyCycleConfig } from '../types/UserPreferences';
+import { getCurrentMonthlyPeriod, getPastMonthlyPeriods, getMonthlyPeriodForDate } from '../utils/dateUtils';
 
 export interface CategoryMappingRule {
     budgetCategory: string;
@@ -189,6 +191,54 @@ export class BudgetCalculationService {
         return {
             start: startOfMonth(now),
             end: endOfMonth(now),
+            type: 'monthly'
+        };
+    }
+
+    /**
+     * Get current monthly period using custom cycle configuration
+     */
+    static getCurrentCustomMonthlyPeriod(config: MonthlyCycleConfig): BudgetPeriod {
+        const period = getCurrentMonthlyPeriod(config);
+        return {
+            start: period.startDate,
+            end: period.endDate,
+            type: 'monthly'
+        };
+    }
+
+    /**
+     * Get budget period for a budget, considering custom monthly cycles
+     */
+    static getBudgetPeriodWithCustomCycle(budget: Budget, monthlyCycleConfig?: MonthlyCycleConfig): BudgetPeriod {
+        if (budget.useCustomMonthlyCycle && (budget.monthlyCycleConfig || monthlyCycleConfig)) {
+            const config = budget.monthlyCycleConfig || monthlyCycleConfig!;
+            return this.getCurrentCustomMonthlyPeriod(config);
+        }
+        
+        return this.getBudgetPeriod(budget);
+    }
+
+    /**
+     * Get past monthly periods using custom cycle configuration
+     */
+    static getPastCustomMonthlyPeriods(config: MonthlyCycleConfig, count: number = 12): BudgetPeriod[] {
+        const periods = getPastMonthlyPeriods(config, count);
+        return periods.map(period => ({
+            start: period.startDate,
+            end: period.endDate,
+            type: 'monthly' as const
+        }));
+    }
+
+    /**
+     * Get monthly period for a specific date using custom cycle configuration
+     */
+    static getCustomMonthlyPeriodForDate(config: MonthlyCycleConfig, date: Date): BudgetPeriod {
+        const period = getMonthlyPeriodForDate(config, date);
+        return {
+            start: period.startDate,
+            end: period.endDate,
             type: 'monthly'
         };
     }
