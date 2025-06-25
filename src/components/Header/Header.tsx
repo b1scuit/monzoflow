@@ -62,9 +62,6 @@ export const Header: FC<HeaderProps> = ({
                             <div>
                                 <h1 className="text-2xl font-bold text-gray-900">
                                     MonzoFlow
-                                    <span className="ml-2 text-sm font-normal text-gray-500">
-                                        (<EnvironmentFlag />)
-                                    </span>
                                 </h1>
                                 {title && (
                                     <p className="text-sm text-gray-600">{title}</p>
