@@ -5,13 +5,17 @@ import { useFetch } from 'use-http';
 
 // Mock dependencies
 jest.mock('components/DatabaseContext/DatabaseContext');
-jest.mock('use-http');
+jest.mock('use-http', () => ({
+    useFetch: jest.fn()
+}));
 
 const mockDatabase = {
     transactions: {
         bulkPut: jest.fn(),
         where: jest.fn().mockReturnThis(),
         equals: jest.fn().mockReturnThis(),
+        reverse: jest.fn().mockReturnThis(),
+        first: jest.fn().mockResolvedValue(null),
         orderBy: jest.fn().mockReturnThis(),
         last: jest.fn()
     }
