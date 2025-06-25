@@ -113,15 +113,6 @@ export const Index: FC = () => {
                                         </span>
                                     </div>
                                 </div>
-                                <div className="hidden md:block md:ml-10">
-                                    <button
-                                        onClick={handleLogin}
-                                        className="bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 px-6 rounded-lg transition-colors duration-200 shadow-lg"
-                                        aria-label="Login with your Monzo account to start analyzing your finances"
-                                    >
-                                        Login with Monzo
-                                    </button>
-                                </div>
                             </nav>
                         </header>
 
