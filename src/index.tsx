@@ -4,6 +4,7 @@ import './index.css';
 import reportWebVitals from './reportWebVitals';
 import Router from './Router';
 import { AppContextProvider } from 'components/AppContext/context';
+import { CookieConsentProvider } from 'components/CookieConsent';
 
 const root = ReactDOM.createRoot(
   document.getElementById('root') as HTMLElement
@@ -11,7 +12,9 @@ const root = ReactDOM.createRoot(
 root.render(
   <React.StrictMode>
     <AppContextProvider>
-      <Router />
+      <CookieConsentProvider>
+        <Router />
+      </CookieConsentProvider>
     </AppContextProvider>
   </React.StrictMode>
 );
