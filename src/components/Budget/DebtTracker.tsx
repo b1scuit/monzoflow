@@ -7,7 +7,6 @@ import { CreditorMatchingManager } from './CreditorMatchingManager';
 import { DebtMatchingService } from 'services/DebtMatchingService';
 import { useAutomaticDebtMatching } from 'hooks/useAutomaticDebtMatching';
 import { useDebtBalances } from 'hooks/useDebtBalances';
-import { FloatingActionButtons, useFABPresets } from 'components/UI/FloatingActionButtons';
 
 export const DebtTracker: FC = () => {
     const db = useDatabase();
@@ -32,7 +31,6 @@ export const DebtTracker: FC = () => {
     
     const { processAllTransactions, processLatestTransactions, isReady } = useAutomaticDebtMatching();
     const { debtBalances, debtSummary, getDebtBalance, syncDebtBalances, isReady: balancesReady } = useDebtBalances();
-    const { budgetPageFABs } = useFABPresets();
 
     const getDebtPayments = (debtId: string) => {
         return debtPayments?.filter(payment => payment.debtId === debtId) || [];
@@ -478,8 +476,6 @@ export const DebtTracker: FC = () => {
                 />
             )}
 
-            {/* Floating Action Buttons */}
-            <FloatingActionButtons buttons={budgetPageFABs()} />
         </div>
     );
 };
