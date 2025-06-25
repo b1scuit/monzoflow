@@ -275,10 +275,11 @@ export const useTransactions = () => {
             const tempChunks: { since: string; before: string; startingAfter?: string; timeRange: number }[] = []
             
             while (currentStart < now) {
-                const timeRangeMs = now.getTime() - currentStart.getTime()
-                const optimalChunkDays = getOptimalChunkSize(timeRangeMs, accountId)
+                // FIXED: Use consistent chunk size instead of remaining time range
+                // The bug was using remaining time which made chunks larger near present
+                const consistentChunkDays = 7 // Fixed 7-day chunks for consistency
                 
-                const chunkEnd = new Date(currentStart.getTime() + (optimalChunkDays * 24 * 60 * 60 * 1000))
+                const chunkEnd = new Date(currentStart.getTime() + (consistentChunkDays * 24 * 60 * 60 * 1000))
                 const actualEnd = chunkEnd > now ? now : chunkEnd
                 
                 tempChunks.push({
@@ -312,6 +313,16 @@ export const useTransactions = () => {
             
             // Sort by priority (lower number = higher priority)
             chunks.sort((a, b) => a.priority - b.priority)
+        }
+        
+        // Debug logging to see what chunks are created
+        console.log(`📊 Generated ${chunks.length} chunks:`)
+        chunks.slice(0, 5).forEach((chunk, i) => {
+            const days = Math.round((new Date(chunk.before).getTime() - new Date(chunk.since).getTime()) / (24 * 60 * 60 * 1000))
+            console.log(`  ${i + 1}. ${chunk.since.split('T')[0]} to ${chunk.before.split('T')[0]} (${days} days)`)
+        })
+        if (chunks.length > 5) {
+            console.log(`  ... and ${chunks.length - 5} more chunks`)
         }
         
         return chunks
@@ -439,6 +450,18 @@ export const useTransactions = () => {
         console.log(`Fetching transactions in ${filteredChunks.length}/${dateRangeChunks.length} chunk(s) for account ${account_id} (${metrics.skippedChunks} skipped from cache)`)
         console.log(`📅 Date range: ${dateRangeChunks[0]?.since} to ${dateRangeChunks[dateRangeChunks.length - 1]?.before}`)
         console.log(`📊 Expected transactions: ~${Math.round(dateRangeChunks.length * 50)} (rough estimate)`)
+        
+        // Validate for gaps in date coverage
+        if (dateRangeChunks.length > 1) {
+            for (let i = 1; i < dateRangeChunks.length; i++) {
+                const prevEnd = new Date(dateRangeChunks[i-1].before)
+                const currentStart = new Date(dateRangeChunks[i].since)
+                const gapMs = currentStart.getTime() - prevEnd.getTime()
+                if (gapMs > 2000) { // More than 2 seconds gap
+                    console.warn(`⚠️ Gap detected between chunks ${i} and ${i+1}: ${gapMs/1000}s gap`)
+                }
+            }
+        }
         
         let allTransactions: Transaction[] = []
         
@@ -589,6 +612,7 @@ export const useTransactions = () => {
             }
             
             console.log(`📊 Retrieval Summary: ${filteredChunks.length} chunks processed, ${metrics.totalRequests} API calls, ${metrics.successfulRequests} successful`)
+            console.log(`📈 Transaction Summary: ${deduplicatedTransactions.length} total, ${allTransactions.length} before dedup, ${allTransactions.length - deduplicatedTransactions.length} duplicates removed`)
             
             if (deduplicatedTransactions.length > 0) {
                 // Update last pull timestamp
