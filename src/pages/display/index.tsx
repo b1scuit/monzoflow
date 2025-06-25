@@ -12,6 +12,7 @@ import { Account, Owners } from "types/Account";
 import { Transaction } from "types/Transactions";
 import { useLiveQuery } from "dexie-react-hooks";
 import { FloatingActionButtons, useFABPresets } from "components/UI/FloatingActionButtons";
+import Header from "components/Header/Header";
 
 
 const renderName = (account: Account): string => {
@@ -376,46 +377,41 @@ export const Index: FC = () => {
 
     return (
         <div className="min-h-screen bg-gray-50">
-            {/* Header */}
-            <div className="bg-white shadow-sm border-b border-gray-200">
-                <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-                    <div className="flex justify-between items-center py-6">
-                        <div>
-                            <h1 className="text-3xl font-bold text-gray-900">Financial Dashboard</h1>
-                            <p className="text-gray-600 mt-1">
-                                {totalTransactions.toLocaleString()} transactions • 
-                                Total spending: £{(totalSpending / 100).toLocaleString()}
-                            </p>
-                        </div>
-
-                        {/* Quick Stats */}
-                        <div className="hidden md:flex space-x-6">
-                            {budgets && budgets.length > 0 && (
-                                <div className="text-center">
-                                    <p className="text-2xl font-bold text-blue-600">{budgets.length}</p>
-                                    <p className="text-sm text-gray-600">Active Budgets</p>
-                                </div>
-                            )}
-                            {debts && debts.length > 0 && (
-                                <div className="text-center">
-                                    <p className="text-2xl font-bold text-red-600">{debts.length}</p>
-                                    <p className="text-sm text-gray-600">Active Debts</p>
-                                </div>
-                            )}
+            <Header 
+                title="Financial Dashboard"
+                subtitle={`${totalTransactions.toLocaleString()} transactions • Total spending: £${(totalSpending / 100).toLocaleString()}`}
+                showNavigation={true}
+                customActions={
+                    <div className="hidden md:flex space-x-6">
+                        {budgets && budgets.length > 0 && (
                             <div className="text-center">
-                                <p className="text-2xl font-bold text-green-600">{allAccounts.length}</p>
-                                <p className="text-sm text-gray-600">Accounts</p>
+                                <p className="text-2xl font-bold text-blue-600">{budgets.length}</p>
+                                <p className="text-sm text-gray-600">Active Budgets</p>
                             </div>
+                        )}
+                        {debts && debts.length > 0 && (
+                            <div className="text-center">
+                                <p className="text-2xl font-bold text-red-600">{debts.length}</p>
+                                <p className="text-sm text-gray-600">Active Debts</p>
+                            </div>
+                        )}
+                        <div className="text-center">
+                            <p className="text-2xl font-bold text-green-600">{allAccounts.length}</p>
+                            <p className="text-sm text-gray-600">Accounts</p>
                         </div>
                     </div>
+                }
+            />
 
-                    {/* Navigation Tabs */}
-                    <div className="flex space-x-8 border-b border-gray-200">
+            {/* View Navigation Tabs */}
+            <div className="bg-white border-b border-gray-200">
+                <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+                    <div className="flex space-x-8">
                         {views.map(view => (
                             <button
                                 key={view.key}
                                 onClick={() => setActiveView(view.key as any)}
-                                className={`flex items-center space-x-2 py-3 px-1 border-b-2 font-medium text-sm transition-colors ${
+                                className={`flex items-center space-x-2 py-4 px-1 border-b-2 font-medium text-sm transition-colors ${
                                     activeView === view.key
                                         ? 'border-blue-500 text-blue-600'
                                         : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'

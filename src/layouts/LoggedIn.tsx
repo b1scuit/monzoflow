@@ -26,7 +26,6 @@ export const LoggedIn: FC<{ children: ReactElement }> = ({ children }) => {
 
 export const LoggedInStyled: FC<{ children: ReactElement }> = ({ children }) => (
     <div className="min-h-full">
-        {/* Removed duplicate header - pages handle their own headers */}
         <main>
             {children}
         </main>

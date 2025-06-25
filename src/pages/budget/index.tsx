@@ -9,6 +9,7 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { Budget } from 'types/Budget';
 import { BudgetCalculationService } from 'services/BudgetCalculationService';
 import { FloatingActionButtons, useFABPresets } from 'components/UI/FloatingActionButtons';
+import Header from 'components/Header/Header';
 
 const BudgetPage: FC = () => {
     const [activeTab, setActiveTab] = useState<'overview' | 'categories' | 'debt' | 'bills' | 'yearly'>('overview');
@@ -170,57 +171,51 @@ const BudgetPage: FC = () => {
 
     return (
         <div className="min-h-screen bg-gray-50">
-            {/* Header */}
-            <div className="bg-white shadow-sm border-b border-gray-200">
-                <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-                    <div className="flex justify-between items-center py-4">
-                        <div className="flex items-center space-x-4">
-                            <h1 className="text-2xl font-bold text-gray-900">Budget & Finance Tracker</h1>
-                            
-                            {/* Year Selector */}
-                            <div className="flex items-center space-x-2">
-                                <label className="text-sm font-medium text-gray-700">Year:</label>
-                                <select
-                                    value={selectedYear}
-                                    onChange={(e) => setSelectedYear(parseInt(e.target.value))}
-                                    className="border border-gray-300 rounded-md px-3 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                >
-                                    {generateYearOptions().map(year => (
-                                        <option key={year} value={year}>{year}</option>
-                                    ))}
-                                </select>
-                            </div>
+            <Header 
+                title="Budget & Finance Tracker"
+                subtitle={`Managing budgets and finances for ${selectedYear}`}
+                showNavigation={true}
+                customActions={
+                    <div className="flex items-center space-x-4">
+                        {/* Year Selector */}
+                        <div className="flex items-center space-x-2">
+                            <label className="text-sm font-medium text-gray-700">Year:</label>
+                            <select
+                                value={selectedYear}
+                                onChange={(e) => setSelectedYear(parseInt(e.target.value))}
+                                className="border border-gray-300 rounded-md px-3 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            >
+                                {generateYearOptions().map(year => (
+                                    <option key={year} value={year}>{year}</option>
+                                ))}
+                            </select>
                         </div>
 
                         {/* Quick Actions */}
                         <div className="flex items-center space-x-3">
                             <button 
-                                onClick={() => window.location.href = '/settings'}
-                                className="bg-gray-500 text-white px-4 py-2 rounded-md hover:bg-gray-600 transition-colors flex items-center space-x-2"
-                                title="Settings"
-                            >
-                                <span>⚙️</span>
-                                <span>Settings</span>
-                            </button>
-                            <button 
                                 onClick={() => setShowCreateBudgetModal(true)}
-                                className="bg-blue-500 text-white px-4 py-2 rounded-md hover:bg-blue-600 transition-colors"
+                                className="bg-blue-500 text-white px-3 py-2 rounded-md hover:bg-blue-600 transition-colors text-sm"
                             >
                                 Create Budget
                             </button>
-                            <button className="bg-green-500 text-white px-4 py-2 rounded-md hover:bg-green-600 transition-colors">
+                            <button className="bg-green-500 text-white px-3 py-2 rounded-md hover:bg-green-600 transition-colors text-sm">
                                 Add Transaction
                             </button>
                         </div>
                     </div>
+                }
+            />
 
-                    {/* Navigation Tabs */}
-                    <div className="flex space-x-8 border-b border-gray-200">
+            {/* Budget Navigation Tabs */}
+            <div className="bg-white border-b border-gray-200">
+                <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+                    <div className="flex space-x-8">
                         {tabs.map(tab => (
                             <button
                                 key={tab.key}
                                 onClick={() => setActiveTab(tab.key as any)}
-                                className={`flex items-center space-x-2 py-3 px-1 border-b-2 font-medium text-sm transition-colors ${
+                                className={`flex items-center space-x-2 py-4 px-1 border-b-2 font-medium text-sm transition-colors ${
                                     activeTab === tab.key
                                         ? 'border-blue-500 text-blue-600'
                                         : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
