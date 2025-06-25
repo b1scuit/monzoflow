@@ -4,7 +4,7 @@ This document outlines the GitHub secrets required for the automatic production 
 
 ## Overview
 
-The deployment workflow deploys to production on PR merges to main branch. All environment configuration is provided via GitHub secrets, eliminating the need for `.env` files.
+The deployment workflow deploys to production on PR merges to main branch. Environment configuration is provided via GitHub secrets and dynamically creates a `.env.production` file during deployment.
 
 ## Required GitHub Secrets
 
@@ -48,18 +48,20 @@ REACT_APP_MONZO_CLIENT_SECRET
 ## Deployment Flow
 
 ### Production Deployment (PR Merge)
-1. Environment variables are set directly from GitHub secrets
-2. React application builds with production configuration
+1. Creates `.env.production` file from GitHub secrets
+2. React application builds with production configuration from `.env.production`
 3. Firebase Functions are built with environment variables
 4. Deploys both hosting and functions to `monzo-flow` Firebase project  
-5. Updates deployment status to https://monzo-flow.web.app
+5. Cleans up `.env.production` file for security
+6. Updates deployment status to https://monzo-flow.web.app
 
 ## Security Notes
 
 - All configuration is stored securely as GitHub secrets
 - Firebase service account key provides deployment access
-- Environment variables are injected at build time
-- All temporary files are cleaned up after deployment
+- `.env.production` file is created dynamically during deployment and cleaned up afterward
+- Environment variables are loaded from `.env.production` at build time
+- All temporary files including `.env.production` are cleaned up after deployment
 
 ## Troubleshooting
 
