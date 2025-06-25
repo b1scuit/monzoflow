@@ -1,7 +1,6 @@
 import { FC, useState, useMemo } from 'react';
 import { useDatabase } from 'components/DatabaseContext/DatabaseContext';
-import { Budget, BudgetCategory, Debt, Bill, DebtPayment, BillPayment } from 'types/Budget';
-import { Transaction } from 'types/Transactions';
+import { Budget } from 'types/Budget';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { format, startOfYear, endOfYear, eachMonthOfInterval, startOfMonth, endOfMonth, isWithinInterval } from 'date-fns';
 

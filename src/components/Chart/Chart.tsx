@@ -1,6 +1,6 @@
 import { FC } from "react";
 import { scaleOrdinal } from "d3";
-import { SankeyLinkMinimal, SankeyNode, sankey, sankeyCenter, sankeyLinkHorizontal } from "d3-sankey";
+import { SankeyNode, sankey, sankeyCenter, sankeyLinkHorizontal } from "d3-sankey";
 
 const MARGIN_Y = 25;
 const MARGIN_X = 5;

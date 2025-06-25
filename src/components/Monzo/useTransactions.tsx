@@ -240,7 +240,7 @@ export const useTransactions = () => {
 
     // Enhanced transaction retrieval with comprehensive error handling and retry logic
     const retrieveTransactions = async (account_id: string, forceRefresh: boolean = false, onProgress?: (state: TransactionSyncState) => void): Promise<Transaction[] | undefined> => {
-        const startTime = Date.now()
+        const _startTime = Date.now()
         const metrics: PaginationMetrics = {
             totalRequests: 0,
             successfulRequests: 0,

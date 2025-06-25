@@ -1,8 +1,8 @@
 import { FC, useState, useEffect } from 'react';
 import { useDatabase } from 'components/DatabaseContext/DatabaseContext';
-import { Budget, BudgetCategory, Debt, Bill } from 'types/Budget';
+import { Budget } from 'types/Budget';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { format, isWithinInterval, startOfYear, endOfYear } from 'date-fns';
+import { format } from 'date-fns';
 import { useBudgetCalculation } from 'hooks/useBudgetCalculation';
 
 interface BudgetOverviewProps {
