@@ -217,21 +217,21 @@ export const useTransactions = () => {
     const getOptimalChunkSize = (timeRangeMs: number, accountId: string): number => {
         const days = timeRangeMs / (24 * 60 * 60 * 1000)
         
-        // TEMPORARY: Use more conservative chunk sizing to prevent missing transactions
-        // Reduce chunk sizes significantly to ensure we don't hit the 100 transaction limit
+        // EMERGENCY: Ultra-conservative chunk sizing to capture all transactions
+        // Based on your data (9032 transactions over ~5 years), you have high transaction volume
         
-        // Conservative estimate: assume higher transaction density to be safe
-        const estimatedTransactionsPerDay = 8 // Increased from 5
+        // Assume very high transaction density for safety
+        const estimatedTransactionsPerDay = 15 // Much higher estimate
         const estimatedTotal = days * estimatedTransactionsPerDay
         
-        // More aggressive chunking to prevent hitting API limits
-        if (estimatedTotal > 60) { // Reduced from 80
-            return Math.max(14, Math.floor(days * 0.3)) // Smaller chunks
+        // Ultra-aggressive chunking to prevent any API limit hits
+        if (estimatedTotal > 30) { // Much lower threshold
+            return Math.max(3, Math.floor(days * 0.2)) // Very small chunks
         }
         
-        // Cap maximum chunk size more conservatively
-        // For safety, ensure chunks never exceed 30 days to prevent hitting transaction limits
-        return Math.min(30, Math.max(7, Math.floor(days * 0.6))) // Significantly reduced max size
+        // Cap maximum chunk size at 7 days to be ultra-safe
+        // This will create many more API calls but ensure complete data
+        return Math.min(7, Math.max(3, Math.floor(days * 0.4))) // Max 7 days per chunk
         
         // Original learning-based logic disabled temporarily
         // const cache = getChunkCache()
@@ -437,6 +437,8 @@ export const useTransactions = () => {
         })
         
         console.log(`Fetching transactions in ${filteredChunks.length}/${dateRangeChunks.length} chunk(s) for account ${account_id} (${metrics.skippedChunks} skipped from cache)`)
+        console.log(`📅 Date range: ${dateRangeChunks[0]?.since} to ${dateRangeChunks[dateRangeChunks.length - 1]?.before}`)
+        console.log(`📊 Expected transactions: ~${Math.round(dateRangeChunks.length * 50)} (rough estimate)`)
         
         let allTransactions: Transaction[] = []
         
@@ -494,8 +496,11 @@ export const useTransactions = () => {
                             
                             console.log(`Chunk ${i + 1} retrieved ${response.transactions.length} transactions in ${requestTime}ms`)
                             if (response.transactions.length === 100) {
-                                console.warn(`  ⚠️  Hit 100 transaction limit - may be missing transactions in this chunk!`)
+                                console.error(`  🚨 CRITICAL: Hit 100 transaction limit in chunk ${i + 1} (${since} to ${before})`)
+                                console.error(`      This chunk needs to be split further! Missing transactions likely.`)
                                 metrics.errors.push(`Chunk ${i + 1}: Hit 100 transaction limit`)
+                            } else if (response.transactions.length > 80) {
+                                console.warn(`  ⚠️  Warning: Chunk ${i + 1} has ${response.transactions.length} transactions (approaching limit)`)
                             }
                             chunkSuccess = true
                             break
@@ -678,7 +683,20 @@ export const useTransactions = () => {
     // Clear chunk cache for fresh starts
     const clearChunkCache = (): void => {
         localStorage.removeItem('transaction_chunk_cache')
-        console.log('Transaction chunk cache cleared')
+        console.log('🗑️ Transaction chunk cache cleared - next retrieval will fetch all chunks')
+    }
+
+    // Force clear all transaction-related cache data
+    const clearAllTransactionCache = (): void => {
+        // Clear chunk cache
+        localStorage.removeItem('transaction_chunk_cache')
+        // Clear last pull timestamps  
+        Object.keys(localStorage).forEach(key => {
+            if (key.startsWith('lastTransactionPull_') || key.startsWith('lastIncrementalSync_')) {
+                localStorage.removeItem(key)
+            }
+        })
+        console.log('🗑️ All transaction cache data cleared - next retrieval will be completely fresh')
     }
 
     // Get efficiency analytics for monitoring dashboard
@@ -799,6 +817,7 @@ export const useTransactions = () => {
         getAPIMetrics,
         clearAPIMetrics,
         clearChunkCache,
+        clearAllTransactionCache,
         getEfficiencyAnalytics,
         getTokenWindow,
         wasRecentlyPulled
