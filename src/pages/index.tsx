@@ -113,15 +113,6 @@ export const Index: FC = () => {
                                         </span>
                                     </div>
                                 </div>
-                                <div className="hidden md:block md:ml-10">
-                                    <button
-                                        onClick={handleLogin}
-                                        className="bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 px-6 rounded-lg transition-colors duration-200 shadow-lg"
-                                        aria-label="Login with your Monzo account to start analyzing your finances"
-                                    >
-                                        Login with Monzo
-                                    </button>
-                                </div>
                             </nav>
                         </header>
 
@@ -136,15 +127,6 @@ export const Index: FC = () => {
                                     budgeting, debt tracking, and spending insights. No manual data entry required.
                                 </p>
                                 <div className="mt-5 sm:mt-8 sm:flex sm:justify-center lg:justify-start">
-                                    <div className="rounded-md shadow">
-                                        <button
-                                            onClick={handleLogin}
-                                            className="w-full flex items-center justify-center px-8 py-3 border border-transparent text-base font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 md:py-4 md:text-lg md:px-10 transition-colors duration-200"
-                                            aria-label="Get started with MonzoFlow by connecting your Monzo account"
-                                        >
-                                            🚀 Get Started with Monzo
-                                        </button>
-                                    </div>
                                     <div className="mt-3 sm:mt-0 sm:ml-3">
                                         <a
                                             href="#features"
