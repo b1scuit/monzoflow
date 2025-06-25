@@ -37,14 +37,6 @@ jobs:
             echo "✗ firebase.json not found"
             exit 1
           fi
-          
-          if [ -f ".firebaserc" ]; then
-            echo "✓ .firebaserc found"
-            cat .firebaserc
-          else
-            echo "✗ .firebaserc not found"
-            exit 1
-          fi
 
       - name: Set deployment environment
         id: env-config
