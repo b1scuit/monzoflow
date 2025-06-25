@@ -20,7 +20,7 @@ const BudgetPage: FC = () => {
         description: '',
         autoGenerateCategories: true
     });
-    const [autoSetupOptions, setAutoSetupOptions] = useState({
+    const [autoSetupOptions, _setAutoSetupOptions] = useState({
         monthsToAnalyze: 6,
         bufferPercentage: 20,
         includeSmallCategories: false
