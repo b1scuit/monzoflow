@@ -12,6 +12,7 @@ jobs:
     permissions:
       contents: read
       deployments: write
+      checks: write
 
     steps:
       - name: Checkout code
