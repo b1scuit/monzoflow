@@ -6,6 +6,7 @@ import { format, differenceInDays, addMonths } from 'date-fns';
 import { CreditorMatchingManager } from './CreditorMatchingManager';
 import { DebtMatchingService } from 'services/DebtMatchingService';
 import { useAutomaticDebtMatching } from 'hooks/useAutomaticDebtMatching';
+import { useDebtBalances } from 'hooks/useDebtBalances';
 
 export const DebtTracker: FC = () => {
     const db = useDatabase();
@@ -29,6 +30,7 @@ export const DebtTracker: FC = () => {
     const paymentHistory = useLiveQuery(() => db.debtPaymentHistory.orderBy('paymentDate').reverse().toArray());
     
     const { processAllTransactions, processLatestTransactions, isReady } = useAutomaticDebtMatching();
+    const { debtBalances, debtSummary, getDebtBalance, syncDebtBalances, isReady: balancesReady } = useDebtBalances();
 
     const getDebtPayments = (debtId: string) => {
         return debtPayments?.filter(payment => payment.debtId === debtId) || [];
@@ -54,11 +56,15 @@ export const DebtTracker: FC = () => {
     };
 
     const getTotalDebt = () => {
-        return debts?.reduce((sum, debt) => sum + debt.currentBalance, 0) || 0;
+        return debtSummary.totalCurrentDebt;
     };
 
     const getDebtByPriority = (priority: string) => {
-        return debts?.filter(debt => debt.priority === priority && debt.status === 'active') || [];
+        return debts?.filter(debt => {
+            const balanceInfo = getDebtBalance(debt.id);
+            const isActive = balanceInfo ? !balanceInfo.isFullyPaid : debt.status === 'active';
+            return debt.priority === priority && isActive;
+        }) || [];
     };
 
     const handleAddDebt = async () => {
@@ -144,6 +150,13 @@ export const DebtTracker: FC = () => {
                     <h2 className="text-2xl font-bold text-gray-900">Debt Tracker</h2>
                     <div className="flex space-x-3">
                         <button
+                            onClick={syncDebtBalances}
+                            disabled={!balancesReady}
+                            className="bg-green-500 text-white px-3 py-2 rounded-md hover:bg-green-600 disabled:opacity-50 disabled:cursor-not-allowed text-sm"
+                        >
+                            Sync Balances
+                        </button>
+                        <button
                             onClick={() => processLatestTransactions(100)}
                             disabled={!isReady}
                             className="bg-purple-500 text-white px-4 py-2 rounded-md hover:bg-purple-600 disabled:opacity-50 disabled:cursor-not-allowed"
@@ -159,17 +172,21 @@ export const DebtTracker: FC = () => {
                     </div>
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
                     <div className="text-center">
                         <p className="text-3xl font-bold text-red-600">£{getTotalDebt().toLocaleString()}</p>
-                        <p className="text-sm text-gray-600">Total Debt</p>
+                        <p className="text-sm text-gray-600">Current Debt</p>
                     </div>
                     <div className="text-center">
-                        <p className="text-3xl font-bold text-orange-600">{getDebtByPriority('high').length}</p>
-                        <p className="text-sm text-gray-600">High Priority Debts</p>
+                        <p className="text-3xl font-bold text-green-600">£{debtSummary.totalPaid.toLocaleString()}</p>
+                        <p className="text-sm text-gray-600">Total Paid</p>
                     </div>
                     <div className="text-center">
-                        <p className="text-3xl font-bold text-blue-600">{debts?.filter(d => d.status === 'active').length || 0}</p>
+                        <p className="text-3xl font-bold text-blue-600">{debtSummary.overallProgressPercentage.toFixed(1)}%</p>
+                        <p className="text-sm text-gray-600">Overall Progress</p>
+                    </div>
+                    <div className="text-center">
+                        <p className="text-3xl font-bold text-orange-600">{debtSummary.activeDebts}</p>
                         <p className="text-sm text-gray-600">Active Debts</p>
                     </div>
                     <div className="text-center">
@@ -184,10 +201,18 @@ export const DebtTracker: FC = () => {
                 {debts && debts.length > 0 ? (
                     debts.map(debt => {
                         const payments = getDebtPayments(debt.id);
+                        const balanceInfo = getDebtBalance(debt.id);
                         const payoffMonths = calculatePayoffTime(debt);
-                        const progressPercentage = debt.originalAmount > 0 
-                            ? ((debt.originalAmount - debt.currentBalance) / debt.originalAmount) * 100 
-                            : 0;
+                        
+                        // Use calculated balance info if available, otherwise fall back to stored values
+                        const currentBalance = balanceInfo?.currentBalance ?? debt.currentBalance;
+                        const progressPercentage = balanceInfo?.progressPercentage ?? (
+                            debt.originalAmount > 0 
+                                ? ((debt.originalAmount - debt.currentBalance) / debt.originalAmount) * 100 
+                                : 0
+                        );
+                        const totalPaid = balanceInfo?.totalPaid ?? (debt.originalAmount - debt.currentBalance);
+                        const isFullyPaid = balanceInfo?.isFullyPaid ?? (debt.status === 'paid_off');
 
                         const debtPendingMatches = getDebtPendingMatches(debt.id);
                         const debtPaymentHistory = getDebtPaymentHistory(debt.id);
@@ -214,17 +239,31 @@ export const DebtTracker: FC = () => {
                                             {debt.priority.toUpperCase()}
                                         </span>
                                         <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                                            debt.status === 'active' ? 'bg-red-100 text-red-800' : 'bg-green-100 text-green-800'
+                                            isFullyPaid ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
                                         }`}>
-                                            {debt.status.replace('_', ' ').toUpperCase()}
+                                            {isFullyPaid ? 'PAID OFF' : 'ACTIVE'}
                                         </span>
                                     </div>
                                 </div>
 
-                                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+                                <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
                                     <div>
                                         <p className="text-sm text-gray-600">Current Balance</p>
-                                        <p className="text-xl font-bold text-red-600">£{debt.currentBalance.toLocaleString()}</p>
+                                        <p className="text-xl font-bold text-red-600">£{currentBalance.toLocaleString()}</p>
+                                        {balanceInfo && Math.abs(currentBalance - debt.currentBalance) > 0.01 && (
+                                            <p className="text-xs text-orange-600">
+                                                (Stored: £{debt.currentBalance.toLocaleString()})
+                                            </p>
+                                        )}
+                                    </div>
+                                    <div>
+                                        <p className="text-sm text-gray-600">Total Paid</p>
+                                        <p className="text-lg font-medium text-green-600">£{totalPaid.toLocaleString()}</p>
+                                        {balanceInfo && (
+                                            <p className="text-xs text-gray-500">
+                                                Auto: £{balanceInfo.automaticPayments.toLocaleString()}
+                                            </p>
+                                        )}
                                     </div>
                                     <div>
                                         <p className="text-sm text-gray-600">Original Amount</p>
@@ -263,7 +302,7 @@ export const DebtTracker: FC = () => {
                                         )}
                                     </div>
                                     
-                                    {debt.status === 'active' && (
+                                    {!isFullyPaid && (
                                         <div className="flex space-x-2">
                                             <button
                                                 onClick={() => setShowMatchingManager(debt.id)}
@@ -277,6 +316,11 @@ export const DebtTracker: FC = () => {
                                             >
                                                 Make Payment
                                             </button>
+                                        </div>
+                                    )}
+                                    {isFullyPaid && (
+                                        <div className="flex items-center text-green-600">
+                                            <span className="text-sm font-medium">🎉 Debt Paid Off!</span>
                                         </div>
                                     )}
                                 </div>
