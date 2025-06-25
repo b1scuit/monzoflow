@@ -1,6 +1,6 @@
 {
   "projects": {
-    "prod": "monzo-flow"
+    "production": "monzo-flow"
   },
   "targets": {},
   "etags": {}
