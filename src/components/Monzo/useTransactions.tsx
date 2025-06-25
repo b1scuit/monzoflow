@@ -230,7 +230,8 @@ export const useTransactions = () => {
         }
         
         // Cap maximum chunk size more conservatively
-        return Math.min(90, Math.max(14, Math.floor(days * 0.6))) // Reduced from 350 max
+        // For safety, ensure chunks never exceed 30 days to prevent hitting transaction limits
+        return Math.min(30, Math.max(7, Math.floor(days * 0.6))) // Significantly reduced max size
         
         // Original learning-based logic disabled temporarily
         // const cache = getChunkCache()
@@ -283,7 +284,9 @@ export const useTransactions = () => {
                 tempChunks.push({
                     since: currentStart.toISOString(),
                     before: actualEnd.toISOString(),
-                    startingAfter: currentStart.getTime() === startDate.getTime() ? lastKnownTransactionId : undefined,
+                    // TEMPORARY: Don't use starting_after to ensure complete retrieval
+                    // startingAfter: currentStart.getTime() === startDate.getTime() ? lastKnownTransactionId : undefined,
+                    startingAfter: undefined,
                     timeRange: currentStart.getTime()
                 })
                 
@@ -416,7 +419,11 @@ export const useTransactions = () => {
             .reverse()
             .first()
         
-        const dateRangeChunks = getDateRangeChunks(account_id, lastKnownTransaction?.id)
+        console.log(`Last known transaction for account ${account_id}:`, lastKnownTransaction?.id ? `${lastKnownTransaction.id} (${lastKnownTransaction.created})` : 'None')
+        
+        // TEMPORARY: Disable cursor-based pagination to ensure complete retrieval
+        // The cursor might be causing chunks to skip large portions of data
+        const dateRangeChunks = getDateRangeChunks(account_id, undefined) // Don't use lastKnownTransaction?.id
         
         // Apply cache-based filtering to skip known empty chunks
         const filteredChunks = forceRefresh ? dateRangeChunks : dateRangeChunks.filter(chunk => {
@@ -488,6 +495,7 @@ export const useTransactions = () => {
                             console.log(`Chunk ${i + 1} retrieved ${response.transactions.length} transactions in ${requestTime}ms`)
                             if (response.transactions.length === 100) {
                                 console.warn(`  ⚠️  Hit 100 transaction limit - may be missing transactions in this chunk!`)
+                                metrics.errors.push(`Chunk ${i + 1}: Hit 100 transaction limit`)
                             }
                             chunkSuccess = true
                             break
@@ -567,6 +575,15 @@ export const useTransactions = () => {
             
             console.log(`Total transactions retrieved for account ${account_id}: ${deduplicatedTransactions.length}`)
             console.log(`API Efficiency: ${efficiencyScore.toFixed(2)} transactions/request, ${metrics.skippedChunks} chunks skipped, ~${Math.round(timeSaved)}ms saved`)
+            
+            // Check for potential missing transactions
+            const chunksWithLimits = metrics.errors.filter(e => e.includes('100 transaction limit')).length
+            if (chunksWithLimits > 0) {
+                console.error(`⚠️  WARNING: ${chunksWithLimits} chunks hit the 100-transaction limit. May be missing transactions!`)
+                console.error(`   Consider reducing chunk sizes further or implementing cursor-based pagination within chunks.`)
+            }
+            
+            console.log(`📊 Retrieval Summary: ${filteredChunks.length} chunks processed, ${metrics.totalRequests} API calls, ${metrics.successfulRequests} successful`)
             
             if (deduplicatedTransactions.length > 0) {
                 // Update last pull timestamp
