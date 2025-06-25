@@ -46,24 +46,39 @@ jobs:
             exit 1
           fi
 
-      - name: Load secrets from 1Password
-        uses: 1password/load-secrets-action@v2
-        with:
-          export-env: true
-        env:
-          OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
+      - name: Set deployment environment
+        id: env-config
+        run: |
+          echo "Event name: ${{ github.event_name }}"
+          
+          if [ "${{ github.event_name }}" == "pull_request" ]; then
+            echo "Configuring for STAGING deployment"
+            echo "environment=staging" >> $GITHUB_OUTPUT
+            echo "project_id=flowly-staging" >> $GITHUB_OUTPUT
+            echo "url=https://flowly-staging.web.app" >> $GITHUB_OUTPUT
+          else
+            echo "Configuring for PRODUCTION deployment"
+            echo "environment=production" >> $GITHUB_OUTPUT
+            echo "project_id=monzo-flow" >> $GITHUB_OUTPUT
+            echo "url=https://monzo-flow.web.app" >> $GITHUB_OUTPUT
+          fi
+          
+          echo "Deployment configured for: $([ "${{ github.event_name }}" == "pull_request" ] && echo "staging" || echo "production")"
 
       - name: Create environment configuration
         run: |
           if [ "${{ github.event_name }}" == "pull_request" ]; then
-            # Create staging environment from secrets
+            # Create staging environment from GitHub secrets
             cat > .env.staging << EOF
-          NEXT_PUBLIC_FIREBASE_API_KEY="$NEXT_PUBLIC_FIREBASE_API_KEY"
-          NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN="$NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN"
-          NEXT_PUBLIC_FIREBASE_PROJECT_ID="$NEXT_PUBLIC_FIREBASE_PROJECT_ID"
-          NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET="$NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET"
-          NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID="$NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID"
-          NEXT_PUBLIC_FIREBASE_APP_ID="$NEXT_PUBLIC_FIREBASE_APP_ID"
+          REACT_APP_FIREBASE_API_KEY="${{ secrets.STAGING_FIREBASE_API_KEY }}"
+          REACT_APP_FIREBASE_AUTH_DOMAIN="${{ secrets.STAGING_FIREBASE_AUTH_DOMAIN }}"
+          REACT_APP_FIREBASE_PROJECT_ID="${{ secrets.STAGING_FIREBASE_PROJECT_ID }}"
+          REACT_APP_FIREBASE_STORAGE_BUCKET="${{ secrets.STAGING_FIREBASE_STORAGE_BUCKET }}"
+          REACT_APP_FIREBASE_MESSAGING_SENDER_ID="${{ secrets.STAGING_FIREBASE_MESSAGING_SENDER_ID }}"
+          REACT_APP_FIREBASE_APP_ID="${{ secrets.STAGING_FIREBASE_APP_ID }}"
+          REACT_APP_FIREBASE_MEASUREMENT_ID="${{ secrets.STAGING_FIREBASE_MEASUREMENT_ID }}"
+          REACT_APP_MONZO_CLIENT_ID="${{ secrets.STAGING_MONZO_CLIENT_ID }}"
+          REACT_APP_MONZO_REDIRECT_URI="${{ secrets.STAGING_MONZO_REDIRECT_URI }}"
           EOF
             echo "Created .env.staging for staging deployment"
           else
@@ -104,27 +119,6 @@ jobs:
           
           echo "ticket=$JIRA_TICKET" >> $GITHUB_OUTPUT
           echo "Found Jira ticket: $JIRA_TICKET"
-
-      - name: Set deployment environment
-        id: env-config
-        run: |
-          echo "Event name: ${{ github.event_name }}"
-          
-          if [ "${{ github.event_name }}" == "pull_request" ]; then
-            echo "Configuring for STAGING deployment"
-            echo "environment=staging" >> $GITHUB_OUTPUT
-            echo "project_id=flowly-staging" >> $GITHUB_OUTPUT
-            echo "service_account_secret=FIREBASE_SERVICE_ACCOUNT_FLOWLY_STAGING" >> $GITHUB_OUTPUT
-            echo "url=https://flowly-staging.web.app" >> $GITHUB_OUTPUT
-          else
-            echo "Configuring for PRODUCTION deployment"
-            echo "environment=production" >> $GITHUB_OUTPUT
-            echo "project_id=monzo-flow" >> $GITHUB_OUTPUT
-            echo "service_account_secret=FIREBASE_SERVICE_ACCOUNT_MONZO_FLOW" >> $GITHUB_OUTPUT
-            echo "url=https://monzo-flow.web.app" >> $GITHUB_OUTPUT
-          fi
-          
-          echo "Deployment configured for: $([ "${{ github.event_name }}" == "pull_request" ] && echo "staging" || echo "production")"
 
       - name: Create GitHub deployment
         id: deployment
