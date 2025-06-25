@@ -199,44 +199,53 @@ export const useTransactions = () => {
     }
 
     const shouldSkipChunk = (chunkKey: string): boolean => {
-        const cache = getChunkCache()
-        const cached = cache[chunkKey]
+        // TEMPORARY: Disable caching to prevent missing transactions
+        // TODO: Fix cache key generation and validation logic
+        return false
         
-        if (!cached) return false
-        
-        // Skip if chunk was empty and fetched within last 24 hours
-        const twentyFourHoursAgo = Date.now() - (24 * 60 * 60 * 1000)
-        return cached.isEmpty && cached.lastFetch > twentyFourHoursAgo
+        // const cache = getChunkCache()
+        // const cached = cache[chunkKey]
+        // 
+        // if (!cached) return false
+        // 
+        // // Skip if chunk was empty and fetched within last 24 hours
+        // const twentyFourHoursAgo = Date.now() - (24 * 60 * 60 * 1000)
+        // return cached.isEmpty && cached.lastFetch > twentyFourHoursAgo
     }
 
     // Adaptive chunk sizing with learning from historical patterns
     const getOptimalChunkSize = (timeRangeMs: number, accountId: string): number => {
         const days = timeRangeMs / (24 * 60 * 60 * 1000)
         
-        // Learn from cache patterns for this account
-        const cache = getChunkCache()
-        const accountChunks = Object.entries(cache).filter(([key]) => key.includes(accountId))
+        // TEMPORARY: Use more conservative chunk sizing to prevent missing transactions
+        // Reduce chunk sizes significantly to ensure we don't hit the 100 transaction limit
         
-        if (accountChunks.length > 0) {
-            const avgTransactionsPerChunk = accountChunks.reduce((sum, [, data]) => sum + data.transactionCount, 0) / accountChunks.length
-            
-            // Adjust chunk size based on learned transaction density
-            if (avgTransactionsPerChunk > 80) {
-                return Math.max(15, Math.floor(days * 0.3)) // Aggressive reduction for high-density accounts
-            } else if (avgTransactionsPerChunk > 50) {
-                return Math.max(30, Math.floor(days * 0.6)) // Moderate reduction
-            }
-        }
-        
-        // Fallback to original estimate-based logic
-        const estimatedTransactionsPerDay = 5
+        // Conservative estimate: assume higher transaction density to be safe
+        const estimatedTransactionsPerDay = 8 // Increased from 5
         const estimatedTotal = days * estimatedTransactionsPerDay
         
-        if (estimatedTotal > 80) {
-            return Math.max(30, Math.floor(days * 0.5))
+        // More aggressive chunking to prevent hitting API limits
+        if (estimatedTotal > 60) { // Reduced from 80
+            return Math.max(14, Math.floor(days * 0.3)) // Smaller chunks
         }
         
-        return Math.min(350, Math.max(30, Math.floor(days)))
+        // Cap maximum chunk size more conservatively
+        return Math.min(90, Math.max(14, Math.floor(days * 0.6))) // Reduced from 350 max
+        
+        // Original learning-based logic disabled temporarily
+        // const cache = getChunkCache()
+        // const accountChunks = Object.entries(cache).filter(([key]) => key.includes(accountId))
+        // 
+        // if (accountChunks.length > 0) {
+        //     const avgTransactionsPerChunk = accountChunks.reduce((sum, [, data]) => sum + data.transactionCount, 0) / accountChunks.length
+        //     
+        //     // Adjust chunk size based on learned transaction density
+        //     if (avgTransactionsPerChunk > 80) {
+        //         return Math.max(15, Math.floor(days * 0.3)) // Aggressive reduction for high-density accounts
+        //     } else if (avgTransactionsPerChunk > 50) {
+        //         return Math.max(30, Math.floor(days * 0.6)) // Moderate reduction
+        //     }
+        // }
     }
 
     // Enhanced intelligent pagination with priority-based chunk ordering
@@ -450,6 +459,8 @@ export const useTransactions = () => {
                 }
                 
                 console.log(`Fetching chunk ${i + 1}/${filteredChunks.length}: ${since} to ${before}`)
+                console.log(`  → URL: ${url}`)
+                console.log(`  → Chunk size: ~${Math.round((new Date(before).getTime() - new Date(since).getTime()) / (24 * 60 * 60 * 1000))} days`)
                 
                 let chunkSuccess = false
                 let lastError: any = null
@@ -473,6 +484,9 @@ export const useTransactions = () => {
                             updateChunkCache(chunkKey, response.transactions.length === 0, response.transactions.length)
                             
                             console.log(`Chunk ${i + 1} retrieved ${response.transactions.length} transactions in ${requestTime}ms`)
+                            if (response.transactions.length === 100) {
+                                console.warn(`  ⚠️  Hit 100 transaction limit - may be missing transactions in this chunk!`)
+                            }
                             chunkSuccess = true
                             break
                         } else {
