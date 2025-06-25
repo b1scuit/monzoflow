@@ -1,7 +1,6 @@
 import { FC, useState, useEffect } from 'react';
 import { useDatabase } from 'components/DatabaseContext/DatabaseContext';
 import { Debt, CreditorMatchingRule, DebtTransactionMatch } from 'types/Budget';
-import { Transaction } from 'types/Transactions';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { DebtMatchingService } from 'services/DebtMatchingService';
 import { format } from 'date-fns';

@@ -1,6 +1,6 @@
 import { FC, useMemo } from 'react';
 import { Transaction } from 'types/Transactions';
-import { format, startOfWeek, endOfWeek, eachWeekOfInterval, subWeeks, isWithinInterval, parseISO, getHours, getDay } from 'date-fns';
+import { format, endOfWeek, eachWeekOfInterval, subWeeks, isWithinInterval, parseISO, getHours, getDay } from 'date-fns';
 
 interface TrendsAnalysisProps {
     transactions: Transaction[];

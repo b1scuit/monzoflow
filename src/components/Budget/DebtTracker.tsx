@@ -2,7 +2,7 @@ import { FC, useState } from 'react';
 import { useDatabase } from 'components/DatabaseContext/DatabaseContext';
 import { Debt, DebtPayment } from 'types/Budget';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { format, differenceInDays, addMonths } from 'date-fns';
+import { format } from 'date-fns';
 import { CreditorMatchingManager } from './CreditorMatchingManager';
 import { DebtMatchingService } from 'services/DebtMatchingService';
 import { useAutomaticDebtMatching } from 'hooks/useAutomaticDebtMatching';
@@ -29,8 +29,8 @@ export const DebtTracker: FC = () => {
     const pendingMatches = useLiveQuery(() => db.debtTransactionMatches.where('matchStatus').equals('pending').toArray());
     const paymentHistory = useLiveQuery(() => db.debtPaymentHistory.orderBy('paymentDate').reverse().toArray());
     
-    const { processAllTransactions, processLatestTransactions, isReady } = useAutomaticDebtMatching();
-    const { debtBalances, debtSummary, getDebtBalance, syncDebtBalances, isReady: balancesReady } = useDebtBalances();
+    const { processLatestTransactions, isReady } = useAutomaticDebtMatching();
+    const { debtSummary, getDebtBalance, syncDebtBalances, isReady: balancesReady } = useDebtBalances();
 
     const getDebtPayments = (debtId: string) => {
         return debtPayments?.filter(payment => payment.debtId === debtId) || [];
@@ -59,7 +59,7 @@ export const DebtTracker: FC = () => {
         return debtSummary.totalCurrentDebt;
     };
 
-    const getDebtByPriority = (priority: string) => {
+    const _getDebtByPriority = (priority: string) => {
         return debts?.filter(debt => {
             const balanceInfo = getDebtBalance(debt.id);
             const isActive = balanceInfo ? !balanceInfo.isFullyPaid : debt.status === 'active';

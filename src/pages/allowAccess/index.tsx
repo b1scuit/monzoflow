@@ -1,5 +1,5 @@
 import { FC } from "react";
-import { Navigate, useNavigate } from "react-router";
+import { useNavigate } from "react-router";
 
 
 export const Index: FC = () => {
