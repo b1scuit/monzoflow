@@ -265,7 +265,9 @@ export const useTransactions = () => {
             })
         } else {
             // For fresh tokens, prioritize historical data first, then recent
-            const startDate = new Date('2023-07-01T00:00:00Z')
+            // Start from 5 years ago, January 1st
+            const currentYear = new Date().getFullYear()
+            const startDate = new Date(`${currentYear - 5}-01-01T00:00:00Z`)
             let currentStart = new Date(startDate)
             
             // Prioritize older chunks first to maximize historical data retrieval within token window
