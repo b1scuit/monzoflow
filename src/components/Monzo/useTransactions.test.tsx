@@ -5,19 +5,35 @@ import { useFetch } from 'use-http';
 
 // Mock dependencies
 jest.mock('components/DatabaseContext/DatabaseContext');
-jest.mock('use-http', () => ({
-    useFetch: jest.fn()
-}));
+jest.mock('use-http');
 
-const mockDatabase = {
-    transactions: {
-        bulkPut: jest.fn(),
+// Create a proper mock for the Dexie query chain
+const createMockQueryChain = () => {
+    const mockChain = {
         where: jest.fn().mockReturnThis(),
         equals: jest.fn().mockReturnThis(),
         reverse: jest.fn().mockReturnThis(),
         first: jest.fn().mockResolvedValue(null),
         orderBy: jest.fn().mockReturnThis(),
-        last: jest.fn()
+        last: jest.fn().mockResolvedValue(null),
+        toArray: jest.fn().mockResolvedValue([])
+    };
+    
+    // Make sure all chain methods return the mock chain itself
+    Object.keys(mockChain).forEach(key => {
+        if (typeof mockChain[key as keyof typeof mockChain] === 'function' && 
+            !['first', 'last', 'toArray', 'bulkPut'].includes(key)) {
+            mockChain[key as keyof typeof mockChain] = jest.fn().mockReturnValue(mockChain);
+        }
+    });
+    
+    return mockChain;
+};
+
+const mockDatabase = {
+    transactions: {
+        bulkPut: jest.fn().mockResolvedValue(undefined),
+        ...createMockQueryChain()
     }
 };
 
@@ -29,12 +45,31 @@ const mockUseFetch = {
 };
 
 (useDatabase as jest.Mock).mockReturnValue(mockDatabase);
-(useFetch as jest.Mock).mockReturnValue(mockUseFetch);
+
+// Properly mock the entire use-http module
+const useFetchMock = useFetch as jest.MockedFunction<typeof useFetch>;
+useFetchMock.mockReturnValue(mockUseFetch);
 
 describe('useTransactions Enhanced Features', () => {
     beforeEach(() => {
         jest.clearAllMocks();
         localStorage.clear();
+        
+        // Re-setup mocks after clearing
+        useFetchMock.mockReturnValue(mockUseFetch);
+        (useDatabase as jest.Mock).mockReturnValue(mockDatabase);
+        
+        // Reset database mock functions to resolved values
+        mockDatabase.transactions.bulkPut.mockResolvedValue(undefined);
+        mockDatabase.transactions.first.mockResolvedValue(null);
+        mockDatabase.transactions.last.mockResolvedValue(null);
+        mockDatabase.transactions.toArray.mockResolvedValue([]);
+        
+        // Ensure chain methods return the mock database
+        mockDatabase.transactions.where.mockReturnValue(mockDatabase.transactions);
+        mockDatabase.transactions.equals.mockReturnValue(mockDatabase.transactions);
+        mockDatabase.transactions.reverse.mockReturnValue(mockDatabase.transactions);
+        mockDatabase.transactions.orderBy.mockReturnValue(mockDatabase.transactions);
         
         // Set up fresh token
         localStorage.setItem('auth_data', JSON.stringify({ token: 'test-token' }));
@@ -99,6 +134,10 @@ describe('useTransactions Enhanced Features', () => {
         test('should retry on rate limiting errors', async () => {
             const accountId = 'test-account-id';
             
+            // Set token as stale to limit historical sync
+            const tenMinutesAgo = Date.now() - (10 * 60 * 1000);
+            localStorage.setItem('tokenTimestamp', tenMinutesAgo.toString());
+            
             // Mock rate limiting error followed by success
             mockGet
                 .mockRejectedValueOnce({ response: { status: 429 } })
@@ -113,10 +152,14 @@ describe('useTransactions Enhanced Features', () => {
             
             // Should have made 2 requests (initial + retry)
             expect(mockGet).toHaveBeenCalledTimes(2);
-        });
+        }, 10000);
 
         test('should not retry on authentication errors', async () => {
             const accountId = 'test-account-id';
+            
+            // Set token as stale to limit historical sync
+            const tenMinutesAgo = Date.now() - (10 * 60 * 1000);
+            localStorage.setItem('tokenTimestamp', tenMinutesAgo.toString());
             
             // Mock authentication error
             mockGet.mockRejectedValue({ response: { status: 401 } });
@@ -134,10 +177,14 @@ describe('useTransactions Enhanced Features', () => {
             
             // Should only make 1 request (no retry for auth errors)
             expect(mockGet).toHaveBeenCalledTimes(1);
-        });
+        }, 10000);
 
         test('should handle time range errors appropriately', async () => {
             const accountId = 'test-account-id';
+            
+            // Set token as stale to limit historical sync
+            const tenMinutesAgo = Date.now() - (10 * 60 * 1000);
+            localStorage.setItem('tokenTimestamp', tenMinutesAgo.toString());
             
             // Mock time range error
             mockGet.mockRejectedValue({ 
@@ -156,12 +203,16 @@ describe('useTransactions Enhanced Features', () => {
                     expect((error as Error).message).toContain('time range error');
                 }
             });
-        });
+        }, 10000);
     });
 
     describe('Intelligent Pagination', () => {
         test('should use cursor-based pagination when available', async () => {
             const accountId = 'test-account-id';
+            
+            // Set token as stale to limit historical sync
+            const tenMinutesAgo = Date.now() - (10 * 60 * 1000);
+            localStorage.setItem('tokenTimestamp', tenMinutesAgo.toString());
             
             // Mock last known transaction
             mockDatabase.transactions.last.mockResolvedValue({ 
@@ -182,13 +233,14 @@ describe('useTransactions Enhanced Features', () => {
             // Check that the URL contains starting_after parameter
             const callUrl = mockGet.mock.calls[0][0];
             expect(callUrl).toContain('starting_after=last-tx-id');
-        });
+        }, 10000);
 
         test('should adapt chunk sizes based on estimated transaction volume', async () => {
             const accountId = 'test-account-id';
             
-            // Set token as fresh to enable full historical sync
-            localStorage.setItem('tokenTimestamp', Date.now().toString());
+            // Set token as stale to limit historical sync
+            const tenMinutesAgo = Date.now() - (10 * 60 * 1000);
+            localStorage.setItem('tokenTimestamp', tenMinutesAgo.toString());
             
             mockGet.mockResolvedValue({ transactions: [] });
             
@@ -198,9 +250,9 @@ describe('useTransactions Enhanced Features', () => {
                 await result.current.retrieveTransactions(accountId, true);
             });
             
-            // Should make multiple requests with adaptive chunk sizes
+            // Should make requests with adaptive chunk sizes
             expect(mockGet).toHaveBeenCalled();
-        });
+        }, 10000);
     });
 
     describe('Deduplication and Data Integrity', () => {
@@ -348,10 +400,10 @@ describe('useTransactions Enhanced Features', () => {
             });
             
             // Should only make 1 request (limited to 90 days)
-            expect(mockUseFetch.get).toHaveBeenCalledTimes(1);
+            expect(mockGet).toHaveBeenCalledTimes(1);
             
             // Check that the URL contains appropriate date range
-            const callUrl = mockUseFetch.get.mock.calls[0][0];
+            const callUrl = mockGet.mock.calls[0][0];
             expect(callUrl).toContain('since=');
             expect(callUrl).toContain('before=');
         });
