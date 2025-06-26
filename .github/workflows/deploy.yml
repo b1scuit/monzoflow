@@ -20,6 +20,10 @@ jobs:
         with:
           node-version: 'lts/*'
           cache: 'npm'
+      - name: Debug ENV (do not print secrets)
+        run: |
+          echo "Listing expected environment variables:"
+          env | grep REACT_APP_
 
       - name: Install dependencies
         run: npm ci
