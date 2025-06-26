@@ -3,7 +3,6 @@ name: Deploy to Production
 on:
   push:
     branches: [main]
-
 jobs:
   deploy:
     runs-on: ubuntu-latest
@@ -21,11 +20,6 @@ jobs:
         with:
           node-version: 'lts/*'
           cache: 'npm'
-      - name: Debug ENV (do not print secrets)
-        run: |
-          echo "Listing expected environment variables:"
-          env | grep REACT_APP_
-
       - name: Install dependencies
         run: npm ci
 
@@ -38,36 +32,6 @@ jobs:
             echo "✗ firebase.json not found"
             exit 1
           fi
-
-      - name: Create production environment file
-        run: |
-          echo "Creating .env.production file from GitHub secrets"
-          cat > .env.production << EOF
-          REACT_APP_FIREBASE_API_KEY=$REACT_APP_FIREBASE_API_KEY
-          REACT_APP_FIREBASE_AUTH_DOMAIN=$REACT_APP_FIREBASE_AUTH_DOMAIN
-          REACT_APP_FIREBASE_PROJECT_ID=$REACT_APP_FIREBASE_PROJECT_ID
-          REACT_APP_FIREBASE_STORAGE_BUCKET=$REACT_APP_FIREBASE_STORAGE_BUCKET
-          REACT_APP_FIREBASE_MESSAGING_SENDER_ID=$REACT_APP_FIREBASE_MESSAGING_SENDER_ID
-          REACT_APP_FIREBASE_APP_ID=$REACT_APP_FIREBASE_APP_ID
-          REACT_APP_FIREBASE_MEASUREMENT_ID=$REACT_APP_FIREBASE_MEASUREMENT_ID
-          REACT_APP_MONZO_CLIENT_ID=$REACT_APP_MONZO_CLIENT_ID
-          REACT_APP_MONZO_REDIRECT_URI=$REACT_APP_MONZO_REDIRECT_URI
-          REACT_APP_MONZO_CLIENT_SECRET=$REACT_APP_MONZO_CLIENT_SECRET
-          EOF
-          echo "✓ Created .env.production file with environment variables"
-          cat .env.production
-        env:
-          REACT_APP_FIREBASE_API_KEY: ${{ secrets.REACT_APP_FIREBASE_API_KEY }}
-          REACT_APP_FIREBASE_AUTH_DOMAIN: ${{ env.REACT_APP_FIREBASE_AUTH_DOMAIN }}
-          REACT_APP_FIREBASE_PROJECT_ID: ${{ env.REACT_APP_FIREBASE_PROJECT_ID }}
-          REACT_APP_FIREBASE_STORAGE_BUCKET: ${{ env.REACT_APP_FIREBASE_STORAGE_BUCKET }}
-          REACT_APP_FIREBASE_MESSAGING_SENDER_ID: ${{ env.REACT_APP_FIREBASE_MESSAGING_SENDER_ID }}
-          REACT_APP_FIREBASE_APP_ID: ${{ env.REACT_APP_FIREBASE_APP_ID }}
-          REACT_APP_FIREBASE_MEASUREMENT_ID: ${{ env.REACT_APP_FIREBASE_MEASUREMENT_ID }}
-          REACT_APP_MONZO_CLIENT_ID: ${{ env.REACT_APP_MONZO_CLIENT_ID }}
-          REACT_APP_MONZO_REDIRECT_URI: ${{ env.REACT_APP_MONZO_REDIRECT_URI }}
-          REACT_APP_MONZO_CLIENT_SECRET: ${{ secrets.REACT_APP_MONZO_CLIENT_SECRET }}
-
       - name: Extract Jira ticket number
         id: jira-ticket
         run: |
@@ -119,6 +83,16 @@ jobs:
         env:
           FIREBASE_CLI_EXPERIMENTS: webframework,webframeworks
           CI: false
+          REACT_APP_FIREBASE_API_KEY: ${{ secrets.REACT_APP_FIREBASE_API_KEY }}
+          REACT_APP_FIREBASE_AUTH_DOMAIN: ${{ secrets.REACT_APP_FIREBASE_AUTH_DOMAIN }}
+          REACT_APP_FIREBASE_PROJECT_ID: ${{ secrets.REACT_APP_FIREBASE_PROJECT_ID }}
+          REACT_APP_FIREBASE_STORAGE_BUCKET: ${{ secrets.REACT_APP_FIREBASE_STORAGE_BUCKET }}
+          REACT_APP_FIREBASE_MESSAGING_SENDER_ID: ${{ secrets.REACT_APP_FIREBASE_MESSAGING_SENDER_ID }}
+          REACT_APP_FIREBASE_APP_ID: ${{ secrets.REACT_APP_FIREBASE_APP_ID }}
+          REACT_APP_FIREBASE_MEASUREMENT_ID: ${{ secrets.REACT_APP_FIREBASE_MEASUREMENT_ID }}
+          REACT_APP_MONZO_CLIENT_ID: ${{ secrets.REACT_APP_MONZO_CLIENT_ID }}
+          REACT_APP_MONZO_REDIRECT_URI: ${{ secrets.REACT_APP_MONZO_REDIRECT_URI }}
+          REACT_APP_MONZO_CLIENT_SECRET: ${{ secrets.REACT_APP_MONZO_CLIENT_SECRET }}
 
       - name: Set deployment status (success/failure)
         if: always()
