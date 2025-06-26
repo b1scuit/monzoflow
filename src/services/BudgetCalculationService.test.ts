@@ -327,10 +327,12 @@ describe('BudgetCalculationService - Dynamic Categories', () => {
                     100
                 );
 
-                if (categories.length > 1) {
-                    // First category should have highest allocated amount (based on spending)
-                    expect(categories[0].allocatedAmount).toBeGreaterThanOrEqual(categories[1].allocatedAmount);
-                }
+                // Always verify that we have at least one category
+                expect(categories.length).toBeGreaterThan(0);
+                
+                // First category should have highest allocated amount (based on spending) when multiple categories exist
+                expect(categories.length).toBeGreaterThan(1);
+                expect(categories[0].allocatedAmount).toBeGreaterThanOrEqual(categories[1].allocatedAmount);
             });
 
             it('should assign unique colors to categories', () => {
@@ -398,10 +400,10 @@ describe('BudgetCalculationService - Dynamic Categories', () => {
                     { bufferPercentage: 30 }
                 );
 
-                if (setup10.categories.length > 0 && setup30.categories.length > 0) {
-                    // Higher buffer should result in higher amounts
-                    expect(setup30.summary.totalSuggested).toBeGreaterThan(setup10.summary.totalSuggested);
-                }
+                // Higher buffer should result in higher amounts when categories exist
+                expect(setup10.categories.length).toBeGreaterThan(0);
+                expect(setup30.categories.length).toBeGreaterThan(0);
+                expect(setup30.summary.totalSuggested).toBeGreaterThan(setup10.summary.totalSuggested);
             });
 
             it('should include small categories when requested', () => {
@@ -459,19 +461,20 @@ describe('BudgetCalculationService - Dynamic Categories', () => {
                     500
                 );
 
-                if (categories.length > 0) {
-                    const testCategory = categories[0];
-                    
-                    // Should be able to calculate spending for generated category
-                    const spentAmount = BudgetCalculationService.calculateCategorySpent(
-                        recentTransactions,
-                        testCategory,
-                        testPeriod
-                    );
+                // Should have at least one category generated
+                expect(categories.length).toBeGreaterThan(0);
+                
+                const testCategory = categories[0];
+                
+                // Should be able to calculate spending for generated category
+                const spentAmount = BudgetCalculationService.calculateCategorySpent(
+                    recentTransactions,
+                    testCategory,
+                    testPeriod
+                );
 
-                    expect(typeof spentAmount).toBe('number');
-                    expect(spentAmount).toBeGreaterThanOrEqual(0);
-                }
+                expect(typeof spentAmount).toBe('number');
+                expect(spentAmount).toBeGreaterThanOrEqual(0);
             });
 
             it('should generate categories with valid data structure', () => {

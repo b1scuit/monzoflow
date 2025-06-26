@@ -21,7 +21,7 @@ const BudgetPage: FC = () => {
         description: '',
         autoGenerateCategories: true
     });
-    const [_autoSetupOptions, _setAutoSetupOptions] = useState({
+    const [autoSetupOptions] = useState({ // TODO: Implement auto setup options UI
         monthsToAnalyze: 6,
         bufferPercentage: 20,
         includeSmallCategories: false
@@ -125,7 +125,7 @@ const BudgetPage: FC = () => {
                 const budgetSetup = BudgetCalculationService.generateCompleteBudgetSetup(
                     newBudget.id,
                     transactions,
-                    _autoSetupOptions
+                    autoSetupOptions
                 );
 
                 // Add generated categories to database
@@ -155,7 +155,7 @@ const BudgetPage: FC = () => {
             const budgetSetup = BudgetCalculationService.generateCompleteBudgetSetup(
                 selectedBudget.id,
                 transactions,
-                _autoSetupOptions
+                autoSetupOptions
             );
 
             // Add generated categories to database
@@ -371,9 +371,9 @@ const BudgetPage: FC = () => {
                             <div className="bg-gray-50 rounded-lg p-4">
                                 <h4 className="font-medium text-gray-900 mb-2">Summary:</h4>
                                 <div className="space-y-1 text-sm text-gray-600">
-                                    <p>• Analysis period: Last {_autoSetupOptions.monthsToAnalyze} months</p>
+                                    <p>• Analysis period: Last {autoSetupOptions.monthsToAnalyze} months</p>
                                     <p>• Transaction data: {transactions.length.toLocaleString()} transactions analyzed</p>
-                                    <p>• Budget buffer: {_autoSetupOptions.bufferPercentage}% added to suggestions</p>
+                                    <p>• Budget buffer: {autoSetupOptions.bufferPercentage}% added to suggestions</p>
                                 </div>
                             </div>
 

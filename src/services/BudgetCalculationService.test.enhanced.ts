@@ -2,16 +2,17 @@ import { BudgetCalculationService } from './BudgetCalculationService';
 import { MonthlyCycleConfig } from '../types/UserPreferences';
 
 // Create a simplified transaction interface for testing
-interface MockTransaction {
-    id: string;
-    amount: number;
-    category: string;
-    created: string;
-    description: string;
-    include_in_spending: boolean;
-    account_id: string;
-    merchant?: { name: string };
-}
+// TODO: Implement enhanced testing
+// interface MockTransaction {
+//     id: string;
+//     amount: number;
+//     category: string;
+//     created: string;
+//     description: string;
+//     include_in_spending: boolean;
+//     account_id: string;
+//     merchant?: { name: string };
+// }
 
 describe('BudgetCalculationService - Custom Monthly Cycle Integration', () => {
     const mockTransactions = [

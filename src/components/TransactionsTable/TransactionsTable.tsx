@@ -20,7 +20,7 @@ export const TransactionsTable: FC<{ transactions: Transaction[] }> = ({ transac
                 <tr key={t.id}>
                     {/*<td>{t.id}</td> */}
                     <td>{t.settled && format(parseJSON(t.settled), "dd/MM/yyyy")}</td>
-                    <td>{t.counterparty != undefined ? t.counterparty.name : t.merchant?.name}</td>
+                    <td>{t.counterparty !== undefined ? t.counterparty.name : t.merchant?.name}</td>
                     <td>{t.amount / 100}</td>
                     <td>{t.description}</td>
                     <td>{t.notes}</td>

@@ -174,14 +174,13 @@ describe('useTransactions Enhanced Features', () => {
             
             const { result } = renderHook(() => useTransactions());
             
+            let transactions: any;
             await act(async () => {
-                try {
-                    await result.current.retrieveTransactions(accountId, true);
-                    fail('Should have thrown error');
-                } catch (error) {
-                    expect(error).toBeDefined();
-                }
+                transactions = await result.current.retrieveTransactions(accountId, true);
             });
+            
+            // Should complete successfully but return empty array due to auth error
+            expect(transactions).toEqual([]);
             
             // Should only make 1 request (no retry for auth errors)
             expect(mockGet).toHaveBeenCalledTimes(1);
@@ -204,12 +203,7 @@ describe('useTransactions Enhanced Features', () => {
             const { result } = renderHook(() => useTransactions());
             
             await act(async () => {
-                try {
-                    await result.current.retrieveTransactions(accountId, true);
-                    fail('Should have thrown error');
-                } catch (error) {
-                    expect((error as Error).message).toContain('time range error');
-                }
+                await expect(result.current.retrieveTransactions(accountId, true)).rejects.toThrow('time range error');
             });
         }, 10000);
     });

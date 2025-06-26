@@ -1,6 +1,6 @@
 import { FC, useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import EnvironmentFlag from '../EnvironmentFlag/EnvironmentFlag';
+// import EnvironmentFlag from '../EnvironmentFlag/EnvironmentFlag'; // TODO: Implement environment flag usage
 
 interface HeaderProps {
     title?: string;
