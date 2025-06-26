@@ -175,12 +175,7 @@ describe('useTransactions Enhanced Features', () => {
             const { result } = renderHook(() => useTransactions());
             
             await act(async () => {
-                try {
-                    await result.current.retrieveTransactions(accountId, true);
-                    fail('Should have thrown error');
-                } catch (error) {
-                    expect(error).toBeDefined();
-                }
+                await expect(result.current.retrieveTransactions(accountId, true)).rejects.toBeDefined();
             });
             
             // Should only make 1 request (no retry for auth errors)
@@ -204,12 +199,7 @@ describe('useTransactions Enhanced Features', () => {
             const { result } = renderHook(() => useTransactions());
             
             await act(async () => {
-                try {
-                    await result.current.retrieveTransactions(accountId, true);
-                    fail('Should have thrown error');
-                } catch (error) {
-                    expect((error as Error).message).toContain('time range error');
-                }
+                await expect(result.current.retrieveTransactions(accountId, true)).rejects.toThrow('time range error');
             });
         }, 10000);
     });
