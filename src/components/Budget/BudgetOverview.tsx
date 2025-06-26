@@ -2,7 +2,7 @@ import { FC, useState, useEffect } from 'react';
 import { useDatabase } from 'components/DatabaseContext/DatabaseContext';
 import { Budget } from 'types/Budget';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { useBudgetCalculation } from 'hooks/useBudgetCalculation';
+import { useBudgetCalculation, PeriodAdjustedBudgetCategory } from 'hooks/useBudgetCalculation';
 import { useUserPreferences } from 'hooks/useUserPreferences';
 import { getCurrentMonthlyPeriod } from 'utils/dateUtils';
 
@@ -257,8 +257,10 @@ export const BudgetOverview: FC<BudgetOverviewProps> = ({ year, onCreateBudget }
                         {budgetCategories && budgetCategories.length > 0 ? (
                             <div className="space-y-4">
                                 {budgetCategories.map(category => {
-                                    const percentage = category.allocatedAmount > 0 
-                                        ? (category.spentAmount / category.allocatedAmount) * 100 
+                                    // Use period-adjusted amount if available, otherwise fall back to allocated amount
+                                    const budgetAmount = (category as PeriodAdjustedBudgetCategory).periodAllocatedAmount || category.allocatedAmount;
+                                    const percentage = budgetAmount > 0 
+                                        ? (category.spentAmount / budgetAmount) * 100 
                                         : 0;
                                     const isOverBudget = percentage > 100;
 
@@ -267,7 +269,7 @@ export const BudgetOverview: FC<BudgetOverviewProps> = ({ year, onCreateBudget }
                                             <div className="flex justify-between items-center mb-2">
                                                 <h4 className="font-medium text-gray-900">{category.name}</h4>
                                                 <span className={`text-sm ${isOverBudget ? 'text-red-600' : 'text-gray-600'}`}>
-                                                    £{category.spentAmount.toLocaleString()} / £{category.allocatedAmount.toLocaleString()}
+                                                    £{category.spentAmount.toLocaleString()} / £{budgetAmount.toLocaleString()}
                                                 </span>
                                             </div>
                                             
@@ -284,8 +286,8 @@ export const BudgetOverview: FC<BudgetOverviewProps> = ({ year, onCreateBudget }
                                                 <span>{percentage.toFixed(1)}% used</span>
                                                 <span>
                                                     {isOverBudget 
-                                                        ? `£${(category.spentAmount - category.allocatedAmount).toLocaleString()} over budget`
-                                                        : `£${(category.allocatedAmount - category.spentAmount).toLocaleString()} remaining`
+                                                        ? `£${(category.spentAmount - budgetAmount).toLocaleString()} over budget`
+                                                        : `£${(budgetAmount - category.spentAmount).toLocaleString()} remaining`
                                                     }
                                                 </span>
                                             </div>

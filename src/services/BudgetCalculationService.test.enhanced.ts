@@ -1,9 +1,20 @@
 import { BudgetCalculationService } from './BudgetCalculationService';
-import { Transaction } from '../types/Transactions';
 import { MonthlyCycleConfig } from '../types/UserPreferences';
 
+// Create a simplified transaction interface for testing
+interface MockTransaction {
+    id: string;
+    amount: number;
+    category: string;
+    created: string;
+    description: string;
+    include_in_spending: boolean;
+    account_id: string;
+    merchant?: { name: string };
+}
+
 describe('BudgetCalculationService - Custom Monthly Cycle Integration', () => {
-    const mockTransactions: Transaction[] = [
+    const mockTransactions = [
         {
             id: '1',
             amount: -5000, // £50.00
@@ -44,7 +55,7 @@ describe('BudgetCalculationService - Custom Monthly Cycle Integration', () => {
             account_id: 'acc1',
             merchant: { name: 'TFL' }
         }
-    ];
+    ] as any[];
 
     describe('getSuggestedBudgetAmountsWithCustomCycle', () => {
         it('should calculate suggestions based on custom monthly cycles', () => {

@@ -6,8 +6,12 @@ import { Transaction } from 'types/Transactions';
 import { BudgetCalculationService, BudgetPeriod, CategoryMappingRule } from 'services/BudgetCalculationService';
 import { MonthlyCycleConfig } from 'types/UserPreferences';
 
+export interface PeriodAdjustedBudgetCategory extends BudgetCategory {
+    periodAllocatedAmount: number;
+}
+
 export interface BudgetCalculationHookResult {
-    budgetCategories: BudgetCategory[];
+    budgetCategories: (BudgetCategory | PeriodAdjustedBudgetCategory)[];
     totalBudgeted: number;
     totalSpent: number;
     budgetRemaining: number;
@@ -56,8 +60,32 @@ export const useBudgetCalculation = (options: UseBudgetCalculationOptions): Budg
         )
     );
 
-    // Calculate totals
-    const totalBudgeted = budgetCategories?.reduce((sum, cat) => sum + cat.allocatedAmount, 0) || 0;
+    // Calculate period-adjusted totals
+    const getPeriodAdjustedBudgets = useCallback(() => {
+        if (!budgetCategories || !calculationPeriod) {
+            return { totalBudgeted: 0, adjustedCategories: [] };
+        }
+
+        // Calculate period ratio for prorating yearly budgets
+        const periodDays = Math.ceil((calculationPeriod.end.getTime() - calculationPeriod.start.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+        const yearDays = 365.25; // Account for leap years
+        const periodRatio = periodDays / yearDays;
+
+        // For yearly budget period types, prorate to the custom monthly cycle
+        const shouldProrate = calculationPeriod.type === 'yearly' || 
+                             (monthlyCycleConfig && (monthlyCycleConfig.type !== 'specific_date' || monthlyCycleConfig.date !== 1));
+
+        const adjustedCategories = budgetCategories.map(cat => ({
+            ...cat,
+            periodAllocatedAmount: shouldProrate ? cat.allocatedAmount * periodRatio : cat.allocatedAmount
+        }));
+
+        const totalBudgeted = adjustedCategories.reduce((sum, cat) => sum + cat.periodAllocatedAmount, 0);
+        
+        return { totalBudgeted, adjustedCategories };
+    }, [budgetCategories, calculationPeriod, monthlyCycleConfig]);
+
+    const { totalBudgeted, adjustedCategories } = getPeriodAdjustedBudgets();
     const totalSpent = budgetCategories?.reduce((sum, cat) => sum + cat.spentAmount, 0) || 0;
     const budgetRemaining = totalBudgeted - totalSpent;
     const spentPercentage = totalBudgeted > 0 ? (totalSpent / totalBudgeted) * 100 : 0;
@@ -203,7 +231,7 @@ export const useBudgetCalculation = (options: UseBudgetCalculationOptions): Budg
     }, [budgetCategories, transactions]);
 
     return {
-        budgetCategories: budgetCategories || [],
+        budgetCategories: adjustedCategories.length > 0 ? adjustedCategories : (budgetCategories || []),
         totalBudgeted,
         totalSpent,
         budgetRemaining,
