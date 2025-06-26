@@ -32,7 +32,7 @@
   },
   "scripts": {
     "start": "react-scripts start",
-    "build": "react-scripts build",
+    "build": "cat .env.production; react-scripts build",
     "test": "react-scripts test",
     "eject": "react-scripts eject",
     "emulator": "firebase emulators:start "
