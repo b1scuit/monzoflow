@@ -1,6 +1,6 @@
 import { FC, useState, useMemo } from 'react';
 import { useDatabase } from 'components/DatabaseContext/DatabaseContext';
-import { Budget } from 'types/Budget';
+// import { Budget } from 'types/Budget'; // TODO: Implement Budget type usage
 import { useLiveQuery } from 'dexie-react-hooks';
 import { format, startOfYear, endOfYear, eachMonthOfInterval, startOfMonth, endOfMonth, isWithinInterval } from 'date-fns';
 

@@ -223,41 +223,41 @@ export const useTransactions = () => {
         // return cached.isEmpty && cached.lastFetch > twentyFourHoursAgo
     }
 
-    // Adaptive chunk sizing with learning from historical patterns
-    const getOptimalChunkSize = (timeRangeMs: number, accountId: string): number => {
-        const days = timeRangeMs / (24 * 60 * 60 * 1000)
-        
-        // EMERGENCY: Ultra-conservative chunk sizing to capture all transactions
-        // Based on your data (9032 transactions over ~5 years), you have high transaction volume
-        
-        // Assume very high transaction density for safety
-        const estimatedTransactionsPerDay = 15 // Much higher estimate
-        const estimatedTotal = days * estimatedTransactionsPerDay
-        
-        // Ultra-aggressive chunking to prevent any API limit hits
-        if (estimatedTotal > 30) { // Much lower threshold
-            return Math.max(3, Math.floor(days * 0.2)) // Very small chunks
-        }
-        
-        // Cap maximum chunk size at 7 days to be ultra-safe
-        // This will create many more API calls but ensure complete data
-        return Math.min(7, Math.max(3, Math.floor(days * 0.4))) // Max 7 days per chunk
-        
-        // Original learning-based logic disabled temporarily
-        // const cache = getChunkCache()
-        // const accountChunks = Object.entries(cache).filter(([key]) => key.includes(accountId))
-        // 
-        // if (accountChunks.length > 0) {
-        //     const avgTransactionsPerChunk = accountChunks.reduce((sum, [, data]) => sum + data.transactionCount, 0) / accountChunks.length
-        //     
-        //     // Adjust chunk size based on learned transaction density
-        //     if (avgTransactionsPerChunk > 80) {
-        //         return Math.max(15, Math.floor(days * 0.3)) // Aggressive reduction for high-density accounts
-        //     } else if (avgTransactionsPerChunk > 50) {
-        //         return Math.max(30, Math.floor(days * 0.6)) // Moderate reduction
-        //     }
-        // }
-    }
+    // TODO: Implement adaptive chunk sizing
+    // const getOptimalChunkSize = (timeRangeMs: number, accountId: string): number => {
+    //     const days = timeRangeMs / (24 * 60 * 60 * 1000)
+    //     
+    //     // EMERGENCY: Ultra-conservative chunk sizing to capture all transactions
+    //     // Based on your data (9032 transactions over ~5 years), you have high transaction volume
+    //     
+    //     // Assume very high transaction density for safety
+    //     const estimatedTransactionsPerDay = 15 // Much higher estimate
+    //     const estimatedTotal = days * estimatedTransactionsPerDay
+    //     
+    //     // Ultra-aggressive chunking to prevent any API limit hits
+    //     if (estimatedTotal > 30) { // Much lower threshold
+    //         return Math.max(3, Math.floor(days * 0.2)) // Very small chunks
+    //     }
+    //     
+    //     // Cap maximum chunk size at 7 days to be ultra-safe
+    //     // This will create many more API calls but ensure complete data
+    //     return Math.min(7, Math.max(3, Math.floor(days * 0.4))) // Max 7 days per chunk
+    //     
+    //     // Original learning-based logic disabled temporarily
+    //     // const cache = getChunkCache()
+    //     // const accountChunks = Object.entries(cache).filter(([key]) => key.includes(accountId))
+    //     // 
+    //     // if (accountChunks.length > 0) {
+    //     //     const avgTransactionsPerChunk = accountChunks.reduce((sum, [, data]) => sum + data.transactionCount, 0) / accountChunks.length
+    //     //     
+    //     //     // Adjust chunk size based on learned transaction density
+    //     //     if (avgTransactionsPerChunk > 80) {
+    //     //         return Math.max(15, Math.floor(days * 0.3)) // Aggressive reduction for high-density accounts
+    //     //     } else if (avgTransactionsPerChunk > 50) {
+    //     //         return Math.max(30, Math.floor(days * 0.6)) // Moderate reduction
+    //     //     }
+    //     // }
+    // }
 
     // Enhanced intelligent pagination with priority-based chunk ordering
     const getDateRangeChunks = (accountId: string, lastKnownTransactionId?: string): { since: string; before: string; startingAfter?: string; priority: number }[] => {
@@ -655,6 +655,9 @@ export const useTransactions = () => {
                     totalChunks: filteredChunks.length
                 })
             }
+            
+            // Return empty array when no transactions are retrieved
+            return []
             
         } catch (err) {
             console.error('Failed to retrieve transactions:', err)

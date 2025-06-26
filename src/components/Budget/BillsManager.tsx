@@ -2,12 +2,12 @@ import { FC, useState } from 'react';
 import { useDatabase } from 'components/DatabaseContext/DatabaseContext';
 import { Bill, BillPayment } from 'types/Budget';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { format, addWeeks, addMonths, addYears, isAfter, isBefore, startOfMonth, endOfMonth } from 'date-fns';
+import { format, addWeeks, addMonths, addYears, isAfter, isBefore } from 'date-fns';
 
 export const BillsManager: FC = () => {
     const db = useDatabase();
     const [showAddBill, setShowAddBill] = useState(false);
-    const [_selectedMonth, _setSelectedMonth] = useState(new Date());
+    // const [selectedMonth, setSelectedMonth] = useState(new Date()); // TODO: Implement month selection
     const [newBill, setNewBill] = useState<Partial<Bill>>({
         name: '',
         payee: '',
@@ -19,7 +19,7 @@ export const BillsManager: FC = () => {
     });
 
     const bills = useLiveQuery(() => db.bills.orderBy('nextDueDate').toArray());
-    const _billPayments = useLiveQuery(() => db.billPayments.orderBy('paymentDate').reverse().toArray());
+    // const billPayments = useLiveQuery(() => db.billPayments.orderBy('paymentDate').reverse().toArray()); // TODO: Implement bill payments history
 
     const getUpcomingBills = () => {
         const today = new Date();
@@ -40,15 +40,15 @@ export const BillsManager: FC = () => {
         }) || [];
     };
 
-    const _getBillsForMonth = (month: Date) => {
-        const start = startOfMonth(month);
-        const end = endOfMonth(month);
-        
-        return bills?.filter(bill => {
-            const dueDate = new Date(bill.nextDueDate);
-            return dueDate >= start && dueDate <= end && bill.status === 'active';
-        }) || [];
-    };
+    // const getBillsForMonth = (month: Date) => {
+    //     const start = startOfMonth(month);
+    //     const end = endOfMonth(month);
+    //     
+    //     return bills?.filter(bill => {
+    //         const dueDate = new Date(bill.nextDueDate);
+    //         return dueDate >= start && dueDate <= end && bill.status === 'active';
+    //     }) || [];
+    // }; // TODO: Implement monthly bill filtering
 
     const calculateNextDueDate = (frequency: string, dueDay?: number) => {
         const today = new Date();

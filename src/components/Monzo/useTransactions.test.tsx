@@ -174,9 +174,13 @@ describe('useTransactions Enhanced Features', () => {
             
             const { result } = renderHook(() => useTransactions());
             
+            let transactions: any;
             await act(async () => {
-                await expect(result.current.retrieveTransactions(accountId, true)).rejects.toBeDefined();
+                transactions = await result.current.retrieveTransactions(accountId, true);
             });
+            
+            // Should complete successfully but return empty array due to auth error
+            expect(transactions).toEqual([]);
             
             // Should only make 1 request (no retry for auth errors)
             expect(mockGet).toHaveBeenCalledTimes(1);

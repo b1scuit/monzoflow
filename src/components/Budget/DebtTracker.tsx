@@ -59,13 +59,13 @@ export const DebtTracker: FC = () => {
         return debtSummary.totalCurrentDebt;
     };
 
-    const _getDebtByPriority = (priority: string) => {
-        return debts?.filter(debt => {
-            const balanceInfo = getDebtBalance(debt.id);
-            const isActive = balanceInfo ? !balanceInfo.isFullyPaid : debt.status === 'active';
-            return debt.priority === priority && isActive;
-        }) || [];
-    };
+    // const getDebtByPriority = (priority: string) => {
+    //     return debts?.filter(debt => {
+    //         const balanceInfo = getDebtBalance(debt.id);
+    //         const isActive = balanceInfo ? !balanceInfo.isFullyPaid : debt.status === 'active';
+    //         return debt.priority === priority && isActive;
+    //     }) || [];
+    // }; // TODO: Implement debt priority filtering
 
     const handleAddDebt = async () => {
         if (!newDebt.name || !newDebt.creditor || !newDebt.currentBalance) return;
