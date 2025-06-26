@@ -66,12 +66,12 @@ jobs:
       - name: Extract Jira ticket number
         id: jira-ticket
         run: |
-          # Extract from PR title first, then branch name
-          JIRA_TICKET=$(echo "${{ github.event.pull_request.title }}" | grep -oE '[A-Z]+-[0-9]+' | head -1 || echo "")
+          COMMIT_MESSAGE="${{ github.event.head_commit.message }}"
+          BRANCH_NAME="${GITHUB_REF##*/}"
+          JIRA_TICKET=$(echo "$COMMIT_MESSAGE" | grep -oE '[A-Z]+-[0-9]+' | head -1 || echo "")
           if [ -z "$JIRA_TICKET" ]; then
-            JIRA_TICKET=$(echo "${{ github.event.pull_request.head.ref }}" | grep -oE '[A-Z]+-[0-9]+' | head -1 || echo "no-ticket")
+            JIRA_TICKET=$(echo "$BRANCH_NAME" | grep -oE '[A-Z]+-[0-9]+' | head -1 || echo "no-ticket")
           fi
-          
           echo "ticket=$JIRA_TICKET" >> $GITHUB_OUTPUT
           echo "Found Jira ticket: $JIRA_TICKET"
 
@@ -85,7 +85,7 @@ jobs:
               repo: context.repo.repo,
               ref: context.sha,
               environment: 'production',
-              description: `Production deployment for ${{ steps.jira-ticket.outputs.ticket }} from PR #${{ github.event.pull_request.number }}`,
+              description: `Production deployment for ${{ steps.jira-ticket.outputs.ticket }}`,
               auto_merge: false,
               required_contexts: []
             });
@@ -122,14 +122,13 @@ jobs:
           script: |
             const outcome = "${{ steps.deploy.outcome }}";
             const state = outcome === "success" ? "success" : "failure";
-            
             await github.rest.repos.createDeploymentStatus({
               owner: context.repo.owner,
               repo: context.repo.repo,
               deployment_id: ${{ steps.deployment.outputs.result }},
               state,
               description: state === "success" ? "Successfully deployed to production" : "Production deployment failed",
-              environment_url: state === "success" ? "https://monzo-flow.web.app" : undefined
+              environment_url: state === "success" ? "https://monzoflow.com" : undefined
             });
 
       - name: Clean up temporary files
