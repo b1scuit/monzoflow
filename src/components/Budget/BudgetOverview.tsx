@@ -70,20 +70,54 @@ export const BudgetOverview: FC<BudgetOverviewProps> = ({ year, onCreateBudget }
         return debts?.reduce((sum, debt) => sum + debt.currentBalance, 0) || 0;
     };
 
-    const calculateMonthlyBills = () => {
-        return bills?.reduce((sum, bill) => {
-            switch (bill.frequency) {
-                case 'monthly': return sum + bill.amount;
-                case 'weekly': return sum + (bill.amount * 4.33);
-                case 'quarterly': return sum + (bill.amount / 3);
-                case 'yearly': return sum + (bill.amount / 12);
-                default: return sum;
-            }
-        }, 0) || 0;
+    const calculateBillsForCurrentPeriod = () => {
+        if (!bills || bills.length === 0) return 0;
+        
+        try {
+            const period = getCurrentMonthlyPeriod(monthlyCycleConfig);
+            const periodDays = Math.ceil((period.endDate.getTime() - period.startDate.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+            const averageMonthDays = 30.44; // Average days in a month (365.25 / 12)
+            const periodRatio = periodDays / averageMonthDays;
+            
+            return bills.reduce((sum, bill) => {
+                let monthlyAmount: number;
+                
+                switch (bill.frequency) {
+                    case 'monthly': 
+                        monthlyAmount = bill.amount;
+                        break;
+                    case 'weekly': 
+                        monthlyAmount = bill.amount * 4.33; // 52 weeks / 12 months
+                        break;
+                    case 'quarterly': 
+                        monthlyAmount = bill.amount / 3;
+                        break;
+                    case 'yearly': 
+                        monthlyAmount = bill.amount / 12;
+                        break;
+                    default: 
+                        monthlyAmount = 0;
+                }
+                
+                // Prorate the monthly amount based on the actual period length
+                return sum + (monthlyAmount * periodRatio);
+            }, 0);
+        } catch (err) {
+            // Fallback to standard monthly calculation if custom cycle fails
+            return bills.reduce((sum, bill) => {
+                switch (bill.frequency) {
+                    case 'monthly': return sum + bill.amount;
+                    case 'weekly': return sum + (bill.amount * 4.33);
+                    case 'quarterly': return sum + (bill.amount / 3);
+                    case 'yearly': return sum + (bill.amount / 12);
+                    default: return sum;
+                }
+            }, 0);
+        }
     };
 
     const totalDebt = calculateTotalDebt();
-    const monthlyBills = calculateMonthlyBills();
+    const periodBills = calculateBillsForCurrentPeriod();
 
     return (
         <div className="space-y-6">
@@ -266,22 +300,46 @@ export const BudgetOverview: FC<BudgetOverviewProps> = ({ year, onCreateBudget }
                         )}
                     </div>
 
-                    {/* Monthly Bills Summary */}
+                    {/* Period Bills Summary */}
                     <div className="bg-white shadow rounded-lg p-6">
-                        <h3 className="text-lg font-semibold text-gray-900 mb-4">Monthly Bills Summary</h3>
+                        <h3 className="text-lg font-semibold text-gray-900 mb-4">Bills for Current Period</h3>
                         <div className="text-center">
-                            <p className="text-3xl font-bold text-gray-900">£{monthlyBills.toLocaleString()}</p>
-                            <p className="text-sm text-gray-600">Estimated monthly bills</p>
+                            <p className="text-3xl font-bold text-gray-900">£{periodBills.toLocaleString()}</p>
+                            <p className="text-sm text-gray-600">Estimated bills for this period</p>
                         </div>
                         
                         {bills && bills.length > 0 && (
                             <div className="mt-4 space-y-2">
-                                {bills.slice(0, 5).map(bill => (
-                                    <div key={bill.id} className="flex justify-between text-sm">
-                                        <span className="text-gray-600">{bill.name}</span>
-                                        <span className="font-medium">£{bill.amount.toLocaleString()}</span>
-                                    </div>
-                                ))}
+                                {bills.slice(0, 5).map(bill => {
+                                    // Calculate prorated amount for this bill in the current period
+                                    let periodAmount: number;
+                                    try {
+                                        const period = getCurrentMonthlyPeriod(monthlyCycleConfig);
+                                        const periodDays = Math.ceil((period.endDate.getTime() - period.startDate.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+                                        const averageMonthDays = 30.44;
+                                        const periodRatio = periodDays / averageMonthDays;
+                                        
+                                        let monthlyAmount: number;
+                                        switch (bill.frequency) {
+                                            case 'monthly': monthlyAmount = bill.amount; break;
+                                            case 'weekly': monthlyAmount = bill.amount * 4.33; break;
+                                            case 'quarterly': monthlyAmount = bill.amount / 3; break;
+                                            case 'yearly': monthlyAmount = bill.amount / 12; break;
+                                            default: monthlyAmount = bill.amount;
+                                        }
+                                        periodAmount = monthlyAmount * periodRatio;
+                                    } catch (err) {
+                                        // Fallback to original amount
+                                        periodAmount = bill.amount;
+                                    }
+                                    
+                                    return (
+                                        <div key={bill.id} className="flex justify-between text-sm">
+                                            <span className="text-gray-600">{bill.name}</span>
+                                            <span className="font-medium">£{periodAmount.toLocaleString()}</span>
+                                        </div>
+                                    );
+                                })}
                                 {bills.length > 5 && (
                                     <p className="text-xs text-gray-500 text-center">
                                         +{bills.length - 5} more bills

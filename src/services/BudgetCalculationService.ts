@@ -427,6 +427,53 @@ export class BudgetCalculationService {
     }
 
     /**
+     * Get suggested budget amounts based on historical spending using custom monthly cycles
+     */
+    static getSuggestedBudgetAmountsWithCustomCycle(
+        transactions: Transaction[],
+        category: string,
+        monthlyCycleConfig: MonthlyCycleConfig,
+        periodsToAnalyze: number = 6
+    ): { suggested: number; average: number; min: number; max: number } {
+        const periodSpending: number[] = [];
+        const periods = getPastMonthlyPeriods(monthlyCycleConfig, periodsToAnalyze);
+
+        periods.forEach(period => {
+            const budgetPeriod: BudgetPeriod = {
+                start: period.startDate,
+                end: period.endDate,
+                type: 'monthly'
+            };
+
+            const periodTotal = transactions
+                .filter(transaction => 
+                    this.isTransactionInPeriod(transaction, budgetPeriod) &&
+                    transaction.category === category &&
+                    transaction.amount < 0 &&
+                    transaction.include_in_spending
+                )
+                .reduce((sum, transaction) => sum + Math.abs(transaction.amount), 0);
+
+            if (periodTotal > 0) {
+                periodSpending.push(periodTotal);
+            }
+        });
+
+        if (periodSpending.length === 0) {
+            return { suggested: 0, average: 0, min: 0, max: 0 };
+        }
+
+        const average = periodSpending.reduce((sum, amount) => sum + amount, 0) / periodSpending.length;
+        const min = Math.min(...periodSpending);
+        const max = Math.max(...periodSpending);
+        
+        // Suggest 20% buffer above average
+        const suggested = Math.round(average * 1.2);
+
+        return { suggested, average, min, max };
+    }
+
+    /**
      * Generate category-based chart data for Sankey diagram
      */
     static generateCategoryChartData(

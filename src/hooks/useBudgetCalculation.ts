@@ -169,15 +169,24 @@ export const useBudgetCalculation = (options: UseBudgetCalculationOptions): Budg
     }, [budgetCategories, transactions, calculationPeriod, customMappings]);
 
     /**
-     * Get suggested budget amount for a category
+     * Get suggested budget amount for a category using custom monthly cycles
      */
     const getSuggestedAmount = useCallback((category: string) => {
         if (!transactions) {
             return { suggested: 0, average: 0, min: 0, max: 0 };
         }
 
+        // If we have a custom monthly cycle config, use it for historical analysis
+        if (monthlyCycleConfig && (monthlyCycleConfig.type !== 'specific_date' || monthlyCycleConfig.date !== 1)) {
+            return BudgetCalculationService.getSuggestedBudgetAmountsWithCustomCycle(
+                transactions, 
+                category, 
+                monthlyCycleConfig
+            );
+        }
+
         return BudgetCalculationService.getSuggestedBudgetAmounts(transactions, category);
-    }, [transactions]);
+    }, [transactions, monthlyCycleConfig]);
 
     // Auto-refresh calculations when data changes
     useEffect(() => {
