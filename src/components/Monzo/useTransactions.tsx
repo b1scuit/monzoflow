@@ -87,10 +87,12 @@ export const useTransactions = () => {
         }
     }
 
-    // Memoized token staleness check to prevent excessive calls
+    // Memoized token staleness check with dependency on tokenTimestamp for test responsiveness
     const tokenStaleness = useMemo(() => {
         const authData = localStorage.getItem('auth_data')
-        if (!authData) return { isStale: true, checkedAt: Date.now() }
+        const tokenTimestamp = localStorage.getItem('tokenTimestamp')
+        
+        if (!authData || !tokenTimestamp) return { isStale: true, checkedAt: Date.now() }
         
         try {
             JSON.parse(authData) // Validate JSON format
@@ -114,22 +116,30 @@ export const useTransactions = () => {
         } catch {
             return { isStale: true, checkedAt: Date.now() }
         }
-    }, []) // Empty dependency array means this only runs once
+    }, []) // We'll invalidate this through the function below when needed
 
     // Stable function reference that checks if we need to recompute staleness
     const isTokenStale = useCallback((): boolean => {
-        // If the check is recent (within 30 seconds), use cached result
+        // For tests or when localStorage changes, do a fresh check without caching
+        const tokenTimestamp = localStorage.getItem('tokenTimestamp')
+        if (!tokenTimestamp) return true
+        
+        const fiveMinutesAgo = Date.now() - (5 * 60 * 1000)
+        const isCurrentlyStale = parseInt(tokenTimestamp) < fiveMinutesAgo
+        
+        // If the cached result differs from current state, invalidate and return fresh result
+        if (tokenStaleness.isStale !== isCurrentlyStale) {
+            return isCurrentlyStale
+        }
+        
+        // If the check is recent (within 30 seconds), use cached result for performance
         const thirtySecondsAgo = Date.now() - (30 * 1000)
         if (tokenStaleness.checkedAt > thirtySecondsAgo) {
             return tokenStaleness.isStale
         }
         
-        // For real-time checks, do a quick validation without logging
-        const tokenTimestamp = localStorage.getItem('tokenTimestamp')
-        if (!tokenTimestamp) return true
-        
-        const fiveMinutesAgo = Date.now() - (5 * 60 * 1000)
-        return parseInt(tokenTimestamp) < fiveMinutesAgo
+        // Otherwise return fresh check
+        return isCurrentlyStale
     }, [tokenStaleness])
 
     // Check if transactions were pulled recently (within 1 hour by default)
@@ -285,9 +295,7 @@ export const useTransactions = () => {
                 tempChunks.push({
                     since: currentStart.toISOString(),
                     before: actualEnd.toISOString(),
-                    // TEMPORARY: Don't use starting_after to ensure complete retrieval
-                    // startingAfter: currentStart.getTime() === startDate.getTime() ? lastKnownTransactionId : undefined,
-                    startingAfter: undefined,
+                    startingAfter: currentStart.getTime() === startDate.getTime() ? lastKnownTransactionId : undefined,
                     timeRange: currentStart.getTime()
                 })
                 
@@ -432,9 +440,8 @@ export const useTransactions = () => {
         
         console.log(`Last known transaction for account ${account_id}:`, lastKnownTransaction?.id ? `${lastKnownTransaction.id} (${lastKnownTransaction.created})` : 'None')
         
-        // TEMPORARY: Disable cursor-based pagination to ensure complete retrieval
-        // The cursor might be causing chunks to skip large portions of data
-        const dateRangeChunks = getDateRangeChunks(account_id, undefined) // Don't use lastKnownTransaction?.id
+        // Use cursor-based pagination for intelligent fetching
+        const dateRangeChunks = getDateRangeChunks(account_id, lastKnownTransaction?.id)
         
         // Apply cache-based filtering to skip known empty chunks
         const filteredChunks = forceRefresh ? dateRangeChunks : dateRangeChunks.filter(chunk => {

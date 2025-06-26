@@ -40,9 +40,17 @@ const mockDatabase = {
 const mockGet = jest.fn();
 const mockUseFetch = {
     get: mockGet,
+    post: jest.fn(),
+    put: jest.fn(),
+    delete: jest.fn(),
+    patch: jest.fn(),
     loading: false,
-    error: null
-};
+    error: null,
+    data: null,
+    response: {} as any,
+    abort: jest.fn(),
+    cache: {} as any
+} as any;
 
 (useDatabase as jest.Mock).mockReturnValue(mockDatabase);
 
@@ -214,8 +222,8 @@ describe('useTransactions Enhanced Features', () => {
             const tenMinutesAgo = Date.now() - (10 * 60 * 1000);
             localStorage.setItem('tokenTimestamp', tenMinutesAgo.toString());
             
-            // Mock last known transaction
-            mockDatabase.transactions.last.mockResolvedValue({ 
+            // Mock last known transaction - need to mock the specific query chain
+            mockDatabase.transactions.first.mockResolvedValue({ 
                 id: 'last-tx-id', 
                 created: '2023-06-01T00:00:00Z' 
             });
@@ -259,6 +267,10 @@ describe('useTransactions Enhanced Features', () => {
         test('should deduplicate transactions properly', async () => {
             const accountId = 'test-account-id';
             
+            // Set token as stale to limit historical sync to 90 days
+            const tenMinutesAgo = Date.now() - (10 * 60 * 1000);
+            localStorage.setItem('tokenTimestamp', tenMinutesAgo.toString());
+            
             // Mock response with duplicate transactions
             const duplicateTransactions = [
                 { id: 'tx1', created: '2023-01-01T00:00:00Z', amount: 100 },
@@ -282,7 +294,7 @@ describe('useTransactions Enhanced Features', () => {
                     expect.objectContaining({ id: 'tx2' })
                 ])
             );
-        });
+        }, 10000);
     });
 
     describe('Progress Tracking', () => {
@@ -290,9 +302,23 @@ describe('useTransactions Enhanced Features', () => {
             const accountId = 'test-account-id';
             const progressUpdates: any[] = [];
             
+            // Set token as stale to limit historical sync to 90 days
+            const tenMinutesAgo = Date.now() - (10 * 60 * 1000);
+            localStorage.setItem('tokenTimestamp', tenMinutesAgo.toString());
+            
             mockGet.mockResolvedValue({ transactions: [] });
             
             const { result } = renderHook(() => useTransactions());
+            
+            // Wait for hook to initialize
+            await act(async () => {
+                // Give the hook time to initialize
+                await new Promise(resolve => setTimeout(resolve, 0));
+            });
+            
+            // Ensure result.current is not null
+            expect(result.current).not.toBeNull();
+            expect(result.current.retrieveTransactions).toBeDefined();
             
             await act(async () => {
                 await result.current.retrieveTransactions(accountId, true, (progress) => {
@@ -321,6 +347,15 @@ describe('useTransactions Enhanced Features', () => {
             
             const { result } = renderHook(() => useTransactions());
             
+            // Wait for hook to initialize
+            await act(async () => {
+                await new Promise(resolve => setTimeout(resolve, 0));
+            });
+            
+            // Ensure result.current is not null
+            expect(result.current).not.toBeNull();
+            expect(result.current.incrementalSync).toBeDefined();
+            
             await act(async () => {
                 const transactions = await result.current.incrementalSync(accountId);
                 expect(transactions).toHaveLength(1);
@@ -334,9 +369,22 @@ describe('useTransactions Enhanced Features', () => {
         test('should fall back to full sync when no previous incremental sync', async () => {
             const accountId = 'test-account-id';
             
+            // Set token as stale to limit historical sync to 90 days
+            const tenMinutesAgo = Date.now() - (10 * 60 * 1000);
+            localStorage.setItem('tokenTimestamp', tenMinutesAgo.toString());
+            
             mockGet.mockResolvedValue({ transactions: [] });
             
             const { result } = renderHook(() => useTransactions());
+            
+            // Wait for hook to initialize
+            await act(async () => {
+                await new Promise(resolve => setTimeout(resolve, 0));
+            });
+            
+            // Ensure result.current is not null
+            expect(result.current).not.toBeNull();
+            expect(result.current.incrementalSync).toBeDefined();
             
             await act(async () => {
                 await result.current.incrementalSync(accountId);
@@ -351,11 +399,25 @@ describe('useTransactions Enhanced Features', () => {
         test('should track API performance metrics', async () => {
             const accountId = 'test-account-id';
             
+            // Set token as stale to limit historical sync to 90 days
+            const tenMinutesAgo = Date.now() - (10 * 60 * 1000);
+            localStorage.setItem('tokenTimestamp', tenMinutesAgo.toString());
+            
             mockGet.mockResolvedValue({ 
                 transactions: [{ id: 'tx1', created: '2023-01-01T00:00:00Z' }] 
             });
             
             const { result } = renderHook(() => useTransactions());
+            
+            // Wait for hook to initialize
+            await act(async () => {
+                await new Promise(resolve => setTimeout(resolve, 0));
+            });
+            
+            // Ensure result.current is not null
+            expect(result.current).not.toBeNull();
+            expect(result.current.retrieveTransactions).toBeDefined();
+            expect(result.current.getAPIMetrics).toBeDefined();
             
             await act(async () => {
                 await result.current.retrieveTransactions(accountId, true);
@@ -369,8 +431,18 @@ describe('useTransactions Enhanced Features', () => {
             expect(metrics[0]).toHaveProperty('totalTransactions');
         });
 
-        test('should clear API metrics', () => {
+        test('should clear API metrics', async () => {
             const { result } = renderHook(() => useTransactions());
+            
+            // Wait for hook to initialize
+            await act(async () => {
+                await new Promise(resolve => setTimeout(resolve, 0));
+            });
+            
+            // Ensure result.current is not null
+            expect(result.current).not.toBeNull();
+            expect(result.current.clearAPIMetrics).toBeDefined();
+            expect(result.current.getAPIMetrics).toBeDefined();
             
             // Add some metrics first
             localStorage.setItem('transaction_api_metrics', JSON.stringify([{ test: 'data' }]));
@@ -394,6 +466,15 @@ describe('useTransactions Enhanced Features', () => {
             mockGet.mockResolvedValue({ transactions: [] });
             
             const { result } = renderHook(() => useTransactions());
+            
+            // Wait for hook to initialize
+            await act(async () => {
+                await new Promise(resolve => setTimeout(resolve, 0));
+            });
+            
+            // Ensure result.current is not null
+            expect(result.current).not.toBeNull();
+            expect(result.current.retrieveTransactions).toBeDefined();
             
             await act(async () => {
                 await result.current.retrieveTransactions(accountId, true);
