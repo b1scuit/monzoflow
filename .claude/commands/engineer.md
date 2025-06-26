@@ -62,7 +62,6 @@ Please execute the following complete development workflow for Jira ticket `$ARG
 ## 8. Final Verification
 - Ensure CI/CD pipeline passes
 - Verify PR is ready for review
-- Update Jira ticket status to "In Review" or equivalent
 - Add PR link to Jira ticket comments
 
 ## Error Handling
