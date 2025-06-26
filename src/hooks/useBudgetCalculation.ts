@@ -4,9 +4,14 @@ import { useDatabase } from 'components/DatabaseContext/DatabaseContext';
 import { Budget, BudgetCategory } from 'types/Budget';
 import { Transaction } from 'types/Transactions';
 import { BudgetCalculationService, BudgetPeriod, CategoryMappingRule } from 'services/BudgetCalculationService';
+import { MonthlyCycleConfig } from 'types/UserPreferences';
+
+export interface PeriodAdjustedBudgetCategory extends BudgetCategory {
+    periodAllocatedAmount: number;
+}
 
 export interface BudgetCalculationHookResult {
-    budgetCategories: BudgetCategory[];
+    budgetCategories: (BudgetCategory | PeriodAdjustedBudgetCategory)[];
     totalBudgeted: number;
     totalSpent: number;
     budgetRemaining: number;
@@ -24,10 +29,11 @@ export interface UseBudgetCalculationOptions {
     period?: BudgetPeriod;
     customMappings?: CategoryMappingRule[];
     autoRefresh?: boolean;
+    monthlyCycleConfig?: MonthlyCycleConfig;
 }
 
 export const useBudgetCalculation = (options: UseBudgetCalculationOptions): BudgetCalculationHookResult => {
-    const { budget, period, customMappings, autoRefresh = true } = options;
+    const { budget, period, customMappings, autoRefresh = true, monthlyCycleConfig } = options;
     const db = useDatabase();
     
     const [isLoading, setIsLoading] = useState(true);
@@ -45,11 +51,41 @@ export const useBudgetCalculation = (options: UseBudgetCalculationOptions): Budg
         []
     );
 
-    // Calculate budget period if not provided
-    const calculationPeriod = period || (budget ? BudgetCalculationService.getBudgetPeriod(budget) : BudgetCalculationService.getCurrentMonthPeriod());
+    // Calculate budget period if not provided, considering custom monthly cycles
+    const calculationPeriod = period || (budget ? 
+        BudgetCalculationService.getBudgetPeriodWithCustomCycle(budget, monthlyCycleConfig) : 
+        (monthlyCycleConfig ? 
+            BudgetCalculationService.getCurrentCustomMonthlyPeriod(monthlyCycleConfig) :
+            BudgetCalculationService.getCurrentMonthPeriod()
+        )
+    );
 
-    // Calculate totals
-    const totalBudgeted = budgetCategories?.reduce((sum, cat) => sum + cat.allocatedAmount, 0) || 0;
+    // Calculate period-adjusted totals
+    const getPeriodAdjustedBudgets = useCallback(() => {
+        if (!budgetCategories || !calculationPeriod) {
+            return { totalBudgeted: 0, adjustedCategories: [] };
+        }
+
+        // Calculate period ratio for prorating yearly budgets
+        const periodDays = Math.ceil((calculationPeriod.end.getTime() - calculationPeriod.start.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+        const yearDays = 365.25; // Account for leap years
+        const periodRatio = periodDays / yearDays;
+
+        // For yearly budget period types, prorate to the custom monthly cycle
+        const shouldProrate = calculationPeriod.type === 'yearly' || 
+                             (monthlyCycleConfig && (monthlyCycleConfig.type !== 'specific_date' || monthlyCycleConfig.date !== 1));
+
+        const adjustedCategories = budgetCategories.map(cat => ({
+            ...cat,
+            periodAllocatedAmount: shouldProrate ? cat.allocatedAmount * periodRatio : cat.allocatedAmount
+        }));
+
+        const totalBudgeted = adjustedCategories.reduce((sum, cat) => sum + cat.periodAllocatedAmount, 0);
+        
+        return { totalBudgeted, adjustedCategories };
+    }, [budgetCategories, calculationPeriod, monthlyCycleConfig]);
+
+    const { totalBudgeted, adjustedCategories } = getPeriodAdjustedBudgets();
     const totalSpent = budgetCategories?.reduce((sum, cat) => sum + cat.spentAmount, 0) || 0;
     const budgetRemaining = totalBudgeted - totalSpent;
     const spentPercentage = totalBudgeted > 0 ? (totalSpent / totalBudgeted) * 100 : 0;
@@ -161,15 +197,24 @@ export const useBudgetCalculation = (options: UseBudgetCalculationOptions): Budg
     }, [budgetCategories, transactions, calculationPeriod, customMappings]);
 
     /**
-     * Get suggested budget amount for a category
+     * Get suggested budget amount for a category using custom monthly cycles
      */
     const getSuggestedAmount = useCallback((category: string) => {
         if (!transactions) {
             return { suggested: 0, average: 0, min: 0, max: 0 };
         }
 
+        // If we have a custom monthly cycle config, use it for historical analysis
+        if (monthlyCycleConfig && (monthlyCycleConfig.type !== 'specific_date' || monthlyCycleConfig.date !== 1)) {
+            return BudgetCalculationService.getSuggestedBudgetAmountsWithCustomCycle(
+                transactions, 
+                category, 
+                monthlyCycleConfig
+            );
+        }
+
         return BudgetCalculationService.getSuggestedBudgetAmounts(transactions, category);
-    }, [transactions]);
+    }, [transactions, monthlyCycleConfig]);
 
     // Auto-refresh calculations when data changes
     useEffect(() => {
@@ -186,7 +231,7 @@ export const useBudgetCalculation = (options: UseBudgetCalculationOptions): Budg
     }, [budgetCategories, transactions]);
 
     return {
-        budgetCategories: budgetCategories || [],
+        budgetCategories: adjustedCategories.length > 0 ? adjustedCategories : (budgetCategories || []),
         totalBudgeted,
         totalSpent,
         budgetRemaining,

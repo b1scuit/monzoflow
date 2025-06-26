@@ -1,9 +1,13 @@
+import { MonthlyCycleConfig } from './UserPreferences';
+
 export interface Budget {
     id: string;
     name: string;
     description?: string;
     year: number;
     categories: BudgetCategory[];
+    useCustomMonthlyCycle?: boolean;
+    monthlyCycleConfig?: MonthlyCycleConfig;
     created: string;
     updated: string;
 }

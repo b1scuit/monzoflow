@@ -1,6 +1,8 @@
 import { Transaction } from 'types/Transactions';
 import { Budget, BudgetCategory } from 'types/Budget';
 import { isWithinInterval, startOfYear, endOfYear, startOfMonth, endOfMonth } from 'date-fns';
+import { MonthlyCycleConfig } from '../types/UserPreferences';
+import { getCurrentMonthlyPeriod, getPastMonthlyPeriods, getMonthlyPeriodForDate } from '../utils/dateUtils';
 
 export interface CategoryMappingRule {
     budgetCategory: string;
@@ -194,6 +196,54 @@ export class BudgetCalculationService {
     }
 
     /**
+     * Get current monthly period using custom cycle configuration
+     */
+    static getCurrentCustomMonthlyPeriod(config: MonthlyCycleConfig): BudgetPeriod {
+        const period = getCurrentMonthlyPeriod(config);
+        return {
+            start: period.startDate,
+            end: period.endDate,
+            type: 'monthly'
+        };
+    }
+
+    /**
+     * Get budget period for a budget, considering custom monthly cycles
+     */
+    static getBudgetPeriodWithCustomCycle(budget: Budget, monthlyCycleConfig?: MonthlyCycleConfig): BudgetPeriod {
+        if (budget.useCustomMonthlyCycle && (budget.monthlyCycleConfig || monthlyCycleConfig)) {
+            const config = budget.monthlyCycleConfig || monthlyCycleConfig!;
+            return this.getCurrentCustomMonthlyPeriod(config);
+        }
+        
+        return this.getBudgetPeriod(budget);
+    }
+
+    /**
+     * Get past monthly periods using custom cycle configuration
+     */
+    static getPastCustomMonthlyPeriods(config: MonthlyCycleConfig, count: number = 12): BudgetPeriod[] {
+        const periods = getPastMonthlyPeriods(config, count);
+        return periods.map(period => ({
+            start: period.startDate,
+            end: period.endDate,
+            type: 'monthly' as const
+        }));
+    }
+
+    /**
+     * Get monthly period for a specific date using custom cycle configuration
+     */
+    static getCustomMonthlyPeriodForDate(config: MonthlyCycleConfig, date: Date): BudgetPeriod {
+        const period = getMonthlyPeriodForDate(config, date);
+        return {
+            start: period.startDate,
+            end: period.endDate,
+            type: 'monthly'
+        };
+    }
+
+    /**
      * Get available Monzo categories from transactions with enhanced processing
      */
     static getAvailableCategories(transactions: Transaction[]): string[] {
@@ -369,6 +419,53 @@ export class BudgetCalculationService {
         const average = monthlySpending.reduce((sum, amount) => sum + amount, 0) / monthlySpending.length;
         const min = Math.min(...monthlySpending);
         const max = Math.max(...monthlySpending);
+        
+        // Suggest 20% buffer above average
+        const suggested = Math.round(average * 1.2);
+
+        return { suggested, average, min, max };
+    }
+
+    /**
+     * Get suggested budget amounts based on historical spending using custom monthly cycles
+     */
+    static getSuggestedBudgetAmountsWithCustomCycle(
+        transactions: Transaction[],
+        category: string,
+        monthlyCycleConfig: MonthlyCycleConfig,
+        periodsToAnalyze: number = 6
+    ): { suggested: number; average: number; min: number; max: number } {
+        const periodSpending: number[] = [];
+        const periods = getPastMonthlyPeriods(monthlyCycleConfig, periodsToAnalyze);
+
+        periods.forEach(period => {
+            const budgetPeriod: BudgetPeriod = {
+                start: period.startDate,
+                end: period.endDate,
+                type: 'monthly'
+            };
+
+            const periodTotal = transactions
+                .filter(transaction => 
+                    this.isTransactionInPeriod(transaction, budgetPeriod) &&
+                    transaction.category === category &&
+                    transaction.amount < 0 &&
+                    transaction.include_in_spending
+                )
+                .reduce((sum, transaction) => sum + Math.abs(transaction.amount), 0);
+
+            if (periodTotal > 0) {
+                periodSpending.push(periodTotal);
+            }
+        });
+
+        if (periodSpending.length === 0) {
+            return { suggested: 0, average: 0, min: 0, max: 0 };
+        }
+
+        const average = periodSpending.reduce((sum, amount) => sum + amount, 0) / periodSpending.length;
+        const min = Math.min(...periodSpending);
+        const max = Math.max(...periodSpending);
         
         // Suggest 20% buffer above average
         const suggested = Math.round(average * 1.2);

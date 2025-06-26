@@ -3,6 +3,7 @@ import { useDatabase } from 'components/DatabaseContext/DatabaseContext';
 import { useTransactions } from 'components/Monzo/useTransactions';
 import { useLiveQuery } from 'dexie-react-hooks';
 import Header from 'components/Header/Header';
+import MonthlyCycleSettings from 'components/Settings/MonthlyCycleSettings';
 
 interface StorageInfo {
     totalSize: number;
@@ -202,6 +203,9 @@ const Settings: FC = () => {
             />
             <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
 
+                {/* Monthly Cycle Settings */}
+                <MonthlyCycleSettings className="mb-6" />
+
                 {/* Storage Information */}
                 <div className="bg-white rounded-lg shadow mb-6 p-6">
                     <h2 className="text-xl font-semibold text-gray-900 mb-4 flex items-center">
@@ -362,7 +366,7 @@ const Settings: FC = () => {
                         </div>
                         <div className="flex justify-between">
                             <span className="text-gray-600">Database Version</span>
-                            <span className="text-gray-900">2</span>
+                            <span className="text-gray-900">4</span>
                         </div>
                         <div className="flex justify-between">
                             <span className="text-gray-600">Environment</span>

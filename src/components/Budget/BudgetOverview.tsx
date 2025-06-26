@@ -2,8 +2,9 @@ import { FC, useState, useEffect } from 'react';
 import { useDatabase } from 'components/DatabaseContext/DatabaseContext';
 import { Budget } from 'types/Budget';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { format } from 'date-fns';
-import { useBudgetCalculation } from 'hooks/useBudgetCalculation';
+import { useBudgetCalculation, PeriodAdjustedBudgetCategory } from 'hooks/useBudgetCalculation';
+import { useUserPreferences } from 'hooks/useUserPreferences';
+import { getCurrentMonthlyPeriod } from 'utils/dateUtils';
 
 interface BudgetOverviewProps {
     year: number;
@@ -13,12 +14,17 @@ interface BudgetOverviewProps {
 export const BudgetOverview: FC<BudgetOverviewProps> = ({ year, onCreateBudget }) => {
     const db = useDatabase();
     const [selectedBudget, setSelectedBudget] = useState<Budget | null>(null);
+    const [currentPeriodInfo, setCurrentPeriodInfo] = useState<string>('');
     
     const budgets = useLiveQuery(() => db.budgets.where('year').equals(year).toArray(), [year]);
     const debts = useLiveQuery(() => db.debts.where('status').equals('active').toArray());
     const bills = useLiveQuery(() => db.bills.where('status').equals('active').toArray());
+    const { getMonthlyCycleConfig, loading: preferencesLoading } = useUserPreferences();
 
-    // Use the new budget calculation hook
+    // Get monthly cycle config
+    const monthlyCycleConfig = getMonthlyCycleConfig();
+
+    // Use the new budget calculation hook with custom monthly cycle support
     const {
         budgetCategories,
         totalBudgeted,
@@ -30,6 +36,7 @@ export const BudgetOverview: FC<BudgetOverviewProps> = ({ year, onCreateBudget }
         refreshBudgetCalculations
     } = useBudgetCalculation({ 
         budget: selectedBudget,
+        monthlyCycleConfig,
         autoRefresh: true 
     });
 
@@ -39,31 +46,90 @@ export const BudgetOverview: FC<BudgetOverviewProps> = ({ year, onCreateBudget }
         }
     }, [budgets, selectedBudget]);
 
+    // Update current period info when preferences change
+    useEffect(() => {
+        if (!preferencesLoading) {
+            try {
+                const period = getCurrentMonthlyPeriod(monthlyCycleConfig);
+                const startStr = period.startDate.toLocaleDateString('en-GB', { 
+                    day: 'numeric', 
+                    month: 'short' 
+                });
+                const endStr = period.endDate.toLocaleDateString('en-GB', { 
+                    day: 'numeric', 
+                    month: 'short' 
+                });
+                setCurrentPeriodInfo(`Current period: ${startStr} - ${endStr}`);
+            } catch (err) {
+                setCurrentPeriodInfo('Current period: Standard monthly cycle');
+            }
+        }
+    }, [monthlyCycleConfig, preferencesLoading]);
+
     const calculateTotalDebt = () => {
         return debts?.reduce((sum, debt) => sum + debt.currentBalance, 0) || 0;
     };
 
-    const calculateMonthlyBills = () => {
-        return bills?.reduce((sum, bill) => {
-            switch (bill.frequency) {
-                case 'monthly': return sum + bill.amount;
-                case 'weekly': return sum + (bill.amount * 4.33);
-                case 'quarterly': return sum + (bill.amount / 3);
-                case 'yearly': return sum + (bill.amount / 12);
-                default: return sum;
-            }
-        }, 0) || 0;
+    const calculateBillsForCurrentPeriod = () => {
+        if (!bills || bills.length === 0) return 0;
+        
+        try {
+            const period = getCurrentMonthlyPeriod(monthlyCycleConfig);
+            const periodDays = Math.ceil((period.endDate.getTime() - period.startDate.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+            const averageMonthDays = 30.44; // Average days in a month (365.25 / 12)
+            const periodRatio = periodDays / averageMonthDays;
+            
+            return bills.reduce((sum, bill) => {
+                let monthlyAmount: number;
+                
+                switch (bill.frequency) {
+                    case 'monthly': 
+                        monthlyAmount = bill.amount;
+                        break;
+                    case 'weekly': 
+                        monthlyAmount = bill.amount * 4.33; // 52 weeks / 12 months
+                        break;
+                    case 'quarterly': 
+                        monthlyAmount = bill.amount / 3;
+                        break;
+                    case 'yearly': 
+                        monthlyAmount = bill.amount / 12;
+                        break;
+                    default: 
+                        monthlyAmount = 0;
+                }
+                
+                // Prorate the monthly amount based on the actual period length
+                return sum + (monthlyAmount * periodRatio);
+            }, 0);
+        } catch (err) {
+            // Fallback to standard monthly calculation if custom cycle fails
+            return bills.reduce((sum, bill) => {
+                switch (bill.frequency) {
+                    case 'monthly': return sum + bill.amount;
+                    case 'weekly': return sum + (bill.amount * 4.33);
+                    case 'quarterly': return sum + (bill.amount / 3);
+                    case 'yearly': return sum + (bill.amount / 12);
+                    default: return sum;
+                }
+            }, 0);
+        }
     };
 
     const totalDebt = calculateTotalDebt();
-    const monthlyBills = calculateMonthlyBills();
+    const periodBills = calculateBillsForCurrentPeriod();
 
     return (
         <div className="space-y-6">
             {/* Budget Selection */}
             <div className="bg-white shadow rounded-lg p-6">
                 <div className="flex justify-between items-center mb-4">
-                    <h2 className="text-2xl font-bold text-gray-900">Budget Overview - {year}</h2>
+                    <div>
+                        <h2 className="text-2xl font-bold text-gray-900">Budget Overview - {year}</h2>
+                        {currentPeriodInfo && (
+                            <p className="text-sm text-gray-600 mt-1">{currentPeriodInfo}</p>
+                        )}
+                    </div>
                     {selectedBudget && (
                         <button
                             onClick={refreshBudgetCalculations}
@@ -191,8 +257,10 @@ export const BudgetOverview: FC<BudgetOverviewProps> = ({ year, onCreateBudget }
                         {budgetCategories && budgetCategories.length > 0 ? (
                             <div className="space-y-4">
                                 {budgetCategories.map(category => {
-                                    const percentage = category.allocatedAmount > 0 
-                                        ? (category.spentAmount / category.allocatedAmount) * 100 
+                                    // Use period-adjusted amount if available, otherwise fall back to allocated amount
+                                    const budgetAmount = (category as PeriodAdjustedBudgetCategory).periodAllocatedAmount || category.allocatedAmount;
+                                    const percentage = budgetAmount > 0 
+                                        ? (category.spentAmount / budgetAmount) * 100 
                                         : 0;
                                     const isOverBudget = percentage > 100;
 
@@ -201,7 +269,7 @@ export const BudgetOverview: FC<BudgetOverviewProps> = ({ year, onCreateBudget }
                                             <div className="flex justify-between items-center mb-2">
                                                 <h4 className="font-medium text-gray-900">{category.name}</h4>
                                                 <span className={`text-sm ${isOverBudget ? 'text-red-600' : 'text-gray-600'}`}>
-                                                    £{category.spentAmount.toLocaleString()} / £{category.allocatedAmount.toLocaleString()}
+                                                    £{category.spentAmount.toLocaleString()} / £{budgetAmount.toLocaleString()}
                                                 </span>
                                             </div>
                                             
@@ -218,8 +286,8 @@ export const BudgetOverview: FC<BudgetOverviewProps> = ({ year, onCreateBudget }
                                                 <span>{percentage.toFixed(1)}% used</span>
                                                 <span>
                                                     {isOverBudget 
-                                                        ? `£${(category.spentAmount - category.allocatedAmount).toLocaleString()} over budget`
-                                                        : `£${(category.allocatedAmount - category.spentAmount).toLocaleString()} remaining`
+                                                        ? `£${(category.spentAmount - budgetAmount).toLocaleString()} over budget`
+                                                        : `£${(budgetAmount - category.spentAmount).toLocaleString()} remaining`
                                                     }
                                                 </span>
                                             </div>
@@ -234,22 +302,46 @@ export const BudgetOverview: FC<BudgetOverviewProps> = ({ year, onCreateBudget }
                         )}
                     </div>
 
-                    {/* Monthly Bills Summary */}
+                    {/* Period Bills Summary */}
                     <div className="bg-white shadow rounded-lg p-6">
-                        <h3 className="text-lg font-semibold text-gray-900 mb-4">Monthly Bills Summary</h3>
+                        <h3 className="text-lg font-semibold text-gray-900 mb-4">Bills for Current Period</h3>
                         <div className="text-center">
-                            <p className="text-3xl font-bold text-gray-900">£{monthlyBills.toLocaleString()}</p>
-                            <p className="text-sm text-gray-600">Estimated monthly bills</p>
+                            <p className="text-3xl font-bold text-gray-900">£{periodBills.toLocaleString()}</p>
+                            <p className="text-sm text-gray-600">Estimated bills for this period</p>
                         </div>
                         
                         {bills && bills.length > 0 && (
                             <div className="mt-4 space-y-2">
-                                {bills.slice(0, 5).map(bill => (
-                                    <div key={bill.id} className="flex justify-between text-sm">
-                                        <span className="text-gray-600">{bill.name}</span>
-                                        <span className="font-medium">£{bill.amount.toLocaleString()}</span>
-                                    </div>
-                                ))}
+                                {bills.slice(0, 5).map(bill => {
+                                    // Calculate prorated amount for this bill in the current period
+                                    let periodAmount: number;
+                                    try {
+                                        const period = getCurrentMonthlyPeriod(monthlyCycleConfig);
+                                        const periodDays = Math.ceil((period.endDate.getTime() - period.startDate.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+                                        const averageMonthDays = 30.44;
+                                        const periodRatio = periodDays / averageMonthDays;
+                                        
+                                        let monthlyAmount: number;
+                                        switch (bill.frequency) {
+                                            case 'monthly': monthlyAmount = bill.amount; break;
+                                            case 'weekly': monthlyAmount = bill.amount * 4.33; break;
+                                            case 'quarterly': monthlyAmount = bill.amount / 3; break;
+                                            case 'yearly': monthlyAmount = bill.amount / 12; break;
+                                            default: monthlyAmount = bill.amount;
+                                        }
+                                        periodAmount = monthlyAmount * periodRatio;
+                                    } catch (err) {
+                                        // Fallback to original amount
+                                        periodAmount = bill.amount;
+                                    }
+                                    
+                                    return (
+                                        <div key={bill.id} className="flex justify-between text-sm">
+                                            <span className="text-gray-600">{bill.name}</span>
+                                            <span className="font-medium">£{periodAmount.toLocaleString()}</span>
+                                        </div>
+                                    );
+                                })}
                                 {bills.length > 5 && (
                                     <p className="text-xs text-gray-500 text-center">
                                         +{bills.length - 5} more bills
