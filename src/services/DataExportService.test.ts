@@ -3,36 +3,116 @@ import { MySubClassedDexie } from '../components/DatabaseContext/DatabaseContext
 
 // Mock sample data
 const mockAccounts = [
-    { id: '1', account_id: 'acc_1', account_number: '12345678', sort_code: '12-34-56' }
+    { 
+        id: '1', 
+        closed: false, 
+        created: '2024-01-01T00:00:00.000Z', 
+        description: 'Test Account', 
+        type: 'uk_retail', 
+        currency: 'GBP', 
+        country_code: 'GB', 
+        owners: [], 
+        account_number: '12345678', 
+        sort_code: '12-34-56' 
+    }
 ];
 
 const mockTransactions = [
-    { id: '1', account_id: 'acc_1', amount: -1000, created: '2024-01-01T00:00:00.000Z', description: 'Test transaction' },
-    { id: '2', account_id: 'acc_1', amount: -2000, created: '2024-01-02T00:00:00.000Z', description: 'Another transaction' }
+    { 
+        id: '1', 
+        account_id: 'acc_1', 
+        amount: -1000, 
+        amount_is_pending: false,
+        can_add_to_tab: false,
+        can_be_excluded_from_breakdown: false,
+        can_be_made_subscription: false,
+        can_match_transactions_in_categorization: false,
+        can_split_the_bill: false,
+        categories: {},
+        category: 'general',
+        created: '2024-01-01T00:00:00.000Z', 
+        currency: 'GBP',
+        dedupe_id: 'dedupe_1',
+        description: 'Test transaction',
+        fees: {},
+        include_in_spending: true,
+        is_load: false,
+        local_amount: -1000,
+        local_currency: 'GBP',
+        merchant_feedback_uri: '',
+        metadata: { suggested_tags: '', website: '' },
+        notes: '',
+        originator: false,
+        parent_account_id: '',
+        scheme: 'faster_payments',
+        settled: '2024-01-01T00:00:00.000Z',
+        updated: '2024-01-01T00:00:00.000Z',
+        user_id: 'user_1'
+    },
+    { 
+        id: '2', 
+        account_id: 'acc_1', 
+        amount: -2000, 
+        amount_is_pending: false,
+        can_add_to_tab: false,
+        can_be_excluded_from_breakdown: false,
+        can_be_made_subscription: false,
+        can_match_transactions_in_categorization: false,
+        can_split_the_bill: false,
+        categories: {},
+        category: 'general',
+        created: '2024-01-02T00:00:00.000Z', 
+        currency: 'GBP',
+        dedupe_id: 'dedupe_2',
+        description: 'Another transaction',
+        fees: {},
+        include_in_spending: true,
+        is_load: false,
+        local_amount: -2000,
+        local_currency: 'GBP',
+        merchant_feedback_uri: '',
+        metadata: { suggested_tags: '', website: '' },
+        notes: '',
+        originator: false,
+        parent_account_id: '',
+        scheme: 'faster_payments',
+        settled: '2024-01-02T00:00:00.000Z',
+        updated: '2024-01-02T00:00:00.000Z',
+        user_id: 'user_1'
+    }
 ];
 
 const mockBudgets = [
-    { id: '1', name: 'Test Budget', year: 2024 }
+    { 
+        id: '1', 
+        name: 'Test Budget', 
+        year: 2024, 
+        categories: [],
+        created: '2024-01-01T00:00:00.000Z',
+        updated: '2024-01-01T00:00:00.000Z'
+    }
 ];
 
 const mockUserPreferences = [
     { id: '1', userId: 'default', monthlyCycleType: 'specific_date' as const, monthlyCycleDate: 1, created: '2024-01-01T00:00:00.000Z', updated: '2024-01-01T00:00:00.000Z' }
 ];
 
-// Mock database
-const mockDatabase = {
+// Create proper mock functions
+const createMockQuery = (data: any[]) => ({
+    filter: jest.fn().mockImplementation((filterFn) => ({
+        toArray: jest.fn().mockResolvedValue(data.filter(filterFn))
+    })),
+    toArray: jest.fn().mockResolvedValue(data)
+});
+
+// Function to create a fresh mock database
+const createMockDatabase = () => ({
     verno: 4,
     accounts: {
         toArray: jest.fn().mockResolvedValue(mockAccounts)
     },
     transactions: {
-        orderBy: jest.fn().mockReturnValue({
-            filter: jest.fn().mockReturnValue({
-                toArray: jest.fn().mockResolvedValue(mockTransactions)
-            }),
-            toArray: jest.fn().mockResolvedValue(mockTransactions)
-        }),
-        filter: jest.fn().mockReturnThis(),
+        orderBy: jest.fn().mockImplementation(() => createMockQuery(mockTransactions)),
         toArray: jest.fn().mockResolvedValue(mockTransactions)
     },
     budgets: {
@@ -68,7 +148,10 @@ const mockDatabase = {
     userPreferences: {
         toArray: jest.fn().mockResolvedValue(mockUserPreferences)
     }
-} as unknown as MySubClassedDexie;
+} as unknown as MySubClassedDexie);
+
+// Mock database
+let mockDatabase = createMockDatabase();
 
 // Mock DOM methods
 Object.defineProperty(global, 'URL', {
@@ -99,9 +182,10 @@ describe('DataExportService', () => {
     let service: DataExportService;
 
     beforeEach(() => {
+        mockDatabase = createMockDatabase();
         service = new DataExportService(mockDatabase);
-        jest.clearAllMocks();
     });
+
 
     describe('exportData', () => {
         it('should export all data with default options', async () => {
@@ -149,9 +233,13 @@ describe('DataExportService', () => {
                 }
             };
             
-            await service.exportData(options);
+            const result = await service.exportData(options);
             
-            expect(mockDatabase.transactions.filter).toHaveBeenCalled();
+            // Verify that orderBy was called (which enables date filtering)
+            expect(mockDatabase.transactions.orderBy).toHaveBeenCalled();
+            // Verify we get filtered results (only one transaction matches the date range)
+            expect(result.userData.transactions.length).toBe(1);
+            expect(result.userData.transactions[0].created).toBe('2024-01-01T00:00:00.000Z');
         });
     });
 
@@ -172,28 +260,100 @@ describe('DataExportService', () => {
         it('should export transactions to CSV format', async () => {
             const result = await service.exportToCsv('transactions');
             
-            expect(result).toContain('id,account_id,amount,created,description');
-            expect(result).toContain('1,acc_1,-1000,2024-01-01T00:00:00.000Z,Test transaction');
-            expect(result).toContain('2,acc_1,-2000,2024-01-02T00:00:00.000Z,Another transaction');
+            // Check for the key columns we expect in the CSV
+            expect(result).toContain('id,account_id,amount,');
+            expect(result).toContain('created,');
+            expect(result).toContain('description,');
+            // Check for actual data rows
+            expect(result).toContain('1,acc_1,-1000,');
+            expect(result).toContain('Test transaction');
+            expect(result).toContain('2,acc_1,-2000,');
+            expect(result).toContain('Another transaction');
         });
 
         it('should handle empty data', async () => {
-            mockDatabase.transactions.toArray = jest.fn().mockResolvedValue([]);
+            // Create a new mock database with empty transactions
+            const emptyMockDatabase = createMockDatabase();
+            emptyMockDatabase.transactions.orderBy = jest.fn().mockImplementation(() => createMockQuery([]));
+            const emptyService = new DataExportService(emptyMockDatabase);
             
-            const result = await service.exportToCsv('transactions');
+            const result = await emptyService.exportToCsv('transactions');
             
             expect(result).toBe('');
         });
 
         it('should escape CSV special characters', async () => {
             const mockTransactionsWithSpecialChars = [
-                { id: '1', description: 'Transaction, with comma', amount: -1000 },
-                { id: '2', description: 'Transaction "with quotes"', amount: -2000 }
+                { 
+                    id: '1', 
+                    account_id: 'acc_1', 
+                    amount: -1000, 
+                    amount_is_pending: false,
+                    can_add_to_tab: false,
+                    can_be_excluded_from_breakdown: false,
+                    can_be_made_subscription: false,
+                    can_match_transactions_in_categorization: false,
+                    can_split_the_bill: false,
+                    categories: {},
+                    category: 'general',
+                    created: '2024-01-01T00:00:00.000Z', 
+                    currency: 'GBP',
+                    dedupe_id: 'dedupe_1',
+                    description: 'Transaction, with comma',
+                    fees: {},
+                    include_in_spending: true,
+                    is_load: false,
+                    local_amount: -1000,
+                    local_currency: 'GBP',
+                    merchant_feedback_uri: '',
+                    metadata: { suggested_tags: '', website: '' },
+                    notes: '',
+                    originator: false,
+                    parent_account_id: '',
+                    scheme: 'faster_payments',
+                    settled: '2024-01-01T00:00:00.000Z',
+                    updated: '2024-01-01T00:00:00.000Z',
+                    user_id: 'user_1'
+                },
+                { 
+                    id: '2', 
+                    account_id: 'acc_1', 
+                    amount: -2000, 
+                    amount_is_pending: false,
+                    can_add_to_tab: false,
+                    can_be_excluded_from_breakdown: false,
+                    can_be_made_subscription: false,
+                    can_match_transactions_in_categorization: false,
+                    can_split_the_bill: false,
+                    categories: {},
+                    category: 'general',
+                    created: '2024-01-02T00:00:00.000Z', 
+                    currency: 'GBP',
+                    dedupe_id: 'dedupe_2',
+                    description: 'Transaction "with quotes"',
+                    fees: {},
+                    include_in_spending: true,
+                    is_load: false,
+                    local_amount: -2000,
+                    local_currency: 'GBP',
+                    merchant_feedback_uri: '',
+                    metadata: { suggested_tags: '', website: '' },
+                    notes: '',
+                    originator: false,
+                    parent_account_id: '',
+                    scheme: 'faster_payments',
+                    settled: '2024-01-02T00:00:00.000Z',
+                    updated: '2024-01-02T00:00:00.000Z',
+                    user_id: 'user_1'
+                }
             ];
             
-            mockDatabase.transactions.toArray = jest.fn().mockResolvedValue(mockTransactionsWithSpecialChars);
+            // Create a new mock database with special character transactions
+            const specialCharMockDatabase = createMockDatabase();
+            specialCharMockDatabase.transactions.orderBy = jest.fn().mockImplementation(() => createMockQuery(mockTransactionsWithSpecialChars));
+            const specialCharService = new DataExportService(specialCharMockDatabase);
             
-            const result = await service.exportToCsv('transactions');
+            const result = await specialCharService.exportToCsv('transactions');
             
             expect(result).toContain('"Transaction, with comma"');
             expect(result).toContain('"Transaction ""with quotes"""');
