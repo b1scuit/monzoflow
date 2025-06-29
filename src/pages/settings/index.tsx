@@ -4,6 +4,7 @@ import { useTransactions } from 'components/Monzo/useTransactions';
 import { useLiveQuery } from 'dexie-react-hooks';
 import Header from 'components/Header/Header';
 import MonthlyCycleSettings from 'components/Settings/MonthlyCycleSettings';
+import DataExportImport from 'components/Settings/DataExportImport';
 
 interface StorageInfo {
     totalSize: number;
@@ -205,6 +206,9 @@ const Settings: FC = () => {
 
                 {/* Monthly Cycle Settings */}
                 <MonthlyCycleSettings className="mb-6" />
+
+                {/* Data Export & Import */}
+                <DataExportImport className="mb-6" />
 
                 {/* Storage Information */}
                 <div className="bg-white rounded-lg shadow mb-6 p-6">
