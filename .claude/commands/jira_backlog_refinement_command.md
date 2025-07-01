@@ -26,6 +26,7 @@ For each ticket, the agent will:
 - **Expand the description** with:
   - Detailed user story format (As a... I want... So that...)
   - Technical requirements and implementation details
+  - Whether Remote Config is suitable for this feature
   - Business context and rationale
   - Dependencies and related work
   
