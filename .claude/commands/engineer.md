@@ -1,6 +1,6 @@
 # Jira Ticket Development Workflow
 
-Please execute the following complete development workflow for Jira ticket `$ARGUMENTS
+Please execute the following complete development workflow for Jira ticket `$ARGUMENTS` using subagents to decide the most idea solution
 
 ## 1. Jira Ticket Analysis
 - Fetch and analyze the Jira ticket details including:
@@ -17,9 +17,11 @@ Please execute the following complete development workflow for Jira ticket `$ARG
 
 ## 3. Code Development
 - Implement the required changes based on ticket requirements
+- Ensure the use of subagents to implement the most suitable solution
 - Follow established coding standards and patterns in the codebase
 - Add appropriate error handling and logging
 - Include necessary documentation and comments
+- Avoid changing any existing functionality or existing tests
 - Ensure code is production-ready with proper:
   - Input validation
   - Security considerations
