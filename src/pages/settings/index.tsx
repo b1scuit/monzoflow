@@ -2,6 +2,7 @@ import { FC, useState, useEffect } from 'react';
 import { useDatabase } from 'components/DatabaseContext/DatabaseContext';
 import { useTransactions } from 'components/Monzo/useTransactions';
 import { useLiveQuery } from 'dexie-react-hooks';
+import { useRemoteConfig } from 'hooks/useRemoteConfig';
 import Header from 'components/Header/Header';
 import MonthlyCycleSettings from 'components/Settings/MonthlyCycleSettings';
 import DataExportImport from 'components/Settings/DataExportImport';
@@ -33,6 +34,7 @@ const Settings: FC = () => {
     
     const db = useDatabase();
     const { isTokenStale, forceRefreshAllTransactions } = useTransactions();
+    const { exportEnabled, isLoading: isConfigLoading } = useRemoteConfig();
     
     // Live queries to get current data counts
     const accounts = useLiveQuery(() => db.accounts.toArray());
@@ -207,8 +209,15 @@ const Settings: FC = () => {
                 {/* Monthly Cycle Settings */}
                 <MonthlyCycleSettings className="mb-6" />
 
-                {/* Data Export & Import */}
-                <DataExportImport className="mb-6" />
+                {/* Data Export & Import - Conditionally rendered based on Remote Config */}
+                {isConfigLoading ? (
+                    <div className="bg-white rounded-lg shadow mb-6 p-6 animate-pulse">
+                        <div className="h-6 bg-gray-200 rounded w-1/3 mb-4"></div>
+                        <div className="h-20 bg-gray-200 rounded"></div>
+                    </div>
+                ) : exportEnabled ? (
+                    <DataExportImport className="mb-6" />
+                ) : null}
 
                 {/* Storage Information */}
                 <div className="bg-white rounded-lg shadow mb-6 p-6">
