@@ -99,12 +99,12 @@ export const compassAlert = onCall({
 
         // Get Compass API credentials from environment variables
         const compassApiUrl = process.env.COMPASS_API_URL;
-        const compassApiKey = process.env.COMPASS_API_KEY;
+        const atlassianCredentials = process.env.ATLASSIAN_CREDENTIALS;
 
-        if (!compassApiUrl || !compassApiKey) {
+        if (!compassApiUrl || !atlassianCredentials) {
             console.error('Compass API configuration missing:', {
                 hasUrl: !!compassApiUrl,
-                hasKey: !!compassApiKey
+                hasCredentials: !!atlassianCredentials
             });
             throw new HttpsError('failed-precondition', 'Compass API not configured');
         }
@@ -129,11 +129,14 @@ export const compassAlert = onCall({
             const retryDelay = Math.pow(2, retryCount) * 1000; // Exponential backoff: 1s, 2s, 4s
 
             try {
+                // Create basic auth header from email:api-key format
+                const basicAuthHeader = `Basic ${Buffer.from(atlassianCredentials).toString('base64')}`;
+                
                 const response = await fetch(compassApiUrl, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${compassApiKey}`,
+                        'Authorization': basicAuthHeader,
                         'User-Agent': 'mflow-compass-alert/1.0'
                     },
                     body: JSON.stringify(alertPayload),

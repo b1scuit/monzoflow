@@ -65,18 +65,18 @@ describe('compassAlert Function', () => {
       
       expect(mockConsoleError).toHaveBeenCalledWith('Compass API configuration missing:', {
         hasUrl: false,
-        hasKey: true
+        hasCredentials: true
       });
     });
 
-    it('should require COMPASS_API_KEY', async () => {
-      envHelper.clearEnvVars(['COMPASS_API_KEY']);
+    it('should require ATLASSIAN_CREDENTIALS', async () => {
+      envHelper.clearEnvVars(['ATLASSIAN_CREDENTIALS']);
       
       await expect(wrapped({ data: { message: 'Test alert' } })).rejects.toThrow('Compass API not configured');
       
       expect(mockConsoleError).toHaveBeenCalledWith('Compass API configuration missing:', {
         hasUrl: true,
-        hasKey: false
+        hasCredentials: false
       });
     });
   });
@@ -104,7 +104,7 @@ describe('compassAlert Function', () => {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            'Authorization': 'Bearer test-api-key',
+            'Authorization': 'Basic dGVzdEBleGFtcGxlLmNvbTp0ZXN0LWFwaS1rZXk=',
             'User-Agent': 'mflow-compass-alert/1.0'
           },
           body: expect.stringContaining('Test alert message'),
