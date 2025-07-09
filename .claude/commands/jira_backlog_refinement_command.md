@@ -2,18 +2,12 @@
 
 *Automated Jira ticket refinement using Claude Code*
 
-## Command Instruction
-
-```bash
-claude code --instruction "Take all the Jira issues currently in the backlog of the MFLOW project, expand their requirements by gathering relevant data from Confluence MFlow space, add comprehensive context and acceptance criteria to each ticket, and once updated set each ticket to 'Refined' status. For each backlog issue: 1) Search the MFlow Confluence space for related documentation and context 2) Enhance the ticket description with detailed requirements, user stories, and technical context 3) Add comprehensive acceptance criteria 4) Include references to relevant Confluence pages 5) Transition the ticket to 'Refined' status using transition ID 51"
-```
 
 ## Detailed Implementation Steps
 
-The Claude Code agent will execute the following process for each backlog ticket:
+The Claude Code agent will execute the following process for the ticket `$ARGUMENTS`:
 
 ### 1. **Discovery Phase**
-- Search for all issues in MFLOW project with status "Backlog" using JQL: `project = MFLOW AND status = "Backlog"`
 - Get the current ticket details including summary, description, and metadata
 
 ### 2. **Context Gathering**
