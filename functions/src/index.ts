@@ -79,3 +79,135 @@ export const tokenExchange = onCall({
         throw new HttpsError('internal', 'Failed to exchange token');
     }
 });
+
+// Compass Alert function to forward alerts to Compass API
+export const compassAlert = onCall({
+    cors: true // Enable CORS for all origins
+}, async (request) => {
+    try {
+        // Validate input
+        if (!request.data) {
+            throw new HttpsError('invalid-argument', 'Alert data is required');
+        }
+
+        const { message, context, timestamp, source } = request.data;
+
+        // Validate required fields
+        if (!message) {
+            throw new HttpsError('invalid-argument', 'Alert message is required');
+        }
+
+        // Get Compass API credentials from environment variables
+        const compassApiUrl = process.env.COMPASS_API_URL;
+        const compassApiKey = process.env.COMPASS_API_KEY;
+
+        if (!compassApiUrl || !compassApiKey) {
+            console.error('Compass API configuration missing:', {
+                hasUrl: !!compassApiUrl,
+                hasKey: !!compassApiKey
+            });
+            throw new HttpsError('failed-precondition', 'Compass API not configured');
+        }
+
+        // Prepare alert payload
+        const alertPayload = {
+            message,
+            context: context || {},
+            timestamp: timestamp || new Date().toISOString(),
+            source: source || 'mflow-app'
+        };
+
+        console.log('Sending alert to Compass:', {
+            url: compassApiUrl,
+            source: alertPayload.source,
+            messageLength: message.length
+        });
+
+        // Function to make API call with retry logic
+        const makeApiCall = async (retryCount = 0): Promise<any> => {
+            const maxRetries = 3;
+            const retryDelay = Math.pow(2, retryCount) * 1000; // Exponential backoff: 1s, 2s, 4s
+
+            try {
+                const response = await fetch(compassApiUrl, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${compassApiKey}`,
+                        'User-Agent': 'mflow-compass-alert/1.0'
+                    },
+                    body: JSON.stringify(alertPayload),
+                    timeout: 10000 // 10 second timeout
+                });
+
+                const responseData = await response.json();
+
+                if (!response.ok) {
+                    console.error('Compass API error details:', {
+                        status: response.status,
+                        statusText: response.statusText,
+                        responseData,
+                        retryCount
+                    });
+
+                    // Check if we should retry based on status code
+                    if (response.status >= 500 && retryCount < maxRetries) {
+                        console.log(`Retrying after ${retryDelay}ms (attempt ${retryCount + 1}/${maxRetries + 1})`);
+                        await new Promise(resolve => setTimeout(resolve, retryDelay));
+                        return makeApiCall(retryCount + 1);
+                    }
+
+                    // Handle rate limiting (429)
+                    if (response.status === 429) {
+                        const retryAfter = response.headers.get('retry-after');
+                        const waitTime = retryAfter ? parseInt(retryAfter) * 1000 : retryDelay;
+                        
+                        if (retryCount < maxRetries) {
+                            console.log(`Rate limited, retrying after ${waitTime}ms (attempt ${retryCount + 1}/${maxRetries + 1})`);
+                            await new Promise(resolve => setTimeout(resolve, waitTime));
+                            return makeApiCall(retryCount + 1);
+                        }
+                    }
+
+                    throw new HttpsError('internal', `Compass API error: ${response.status} - ${JSON.stringify(responseData)}`);
+                }
+
+                console.log('Alert sent successfully to Compass:', {
+                    status: response.status,
+                    alertId: responseData.id || 'unknown'
+                });
+
+                return responseData;
+            } catch (error: any) {
+                console.error('API call failed:', error);
+                
+                // Retry on network errors
+                if (retryCount < maxRetries && (error.code === 'ECONNRESET' || error.code === 'ETIMEDOUT' || error.name === 'FetchError')) {
+                    console.log(`Network error, retrying after ${retryDelay}ms (attempt ${retryCount + 1}/${maxRetries + 1})`);
+                    await new Promise(resolve => setTimeout(resolve, retryDelay));
+                    return makeApiCall(retryCount + 1);
+                }
+                
+                throw error;
+            }
+        };
+
+        // Make the API call with retry logic
+        const result = await makeApiCall();
+
+        return {
+            success: true,
+            alertId: result.id || null,
+            timestamp: new Date().toISOString()
+        };
+
+    } catch (error) {
+        console.error('Compass alert error:', error);
+        
+        if (error instanceof HttpsError) {
+            throw error;
+        }
+        
+        throw new HttpsError('internal', 'Failed to send alert to Compass');
+    }
+});
