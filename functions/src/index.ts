@@ -120,7 +120,19 @@ export const compassAlert = onCall({
             throw new HttpsError('invalid-argument', 'Alert data is required');
         }
 
-        const { message, context, timestamp, source } = request.data;
+        const { 
+            message, 
+            context, 
+            timestamp, 
+            source, 
+            priority,
+            description,
+            entity,
+            alias,
+            tags,
+            actions,
+            extraProperties
+        } = request.data;
 
         // Validate required fields
         if (!message) {
@@ -151,12 +163,26 @@ export const compassAlert = onCall({
             throw new HttpsError('failed-precondition', 'Failed to retrieve Atlassian credentials');
         }
 
-        // Prepare alert payload
-        const alertPayload = {
+        // Prepare Compass alert payload following the API specification
+        const alertPayload: any = {
             message,
-            context: context || {},
-            timestamp: timestamp || new Date().toISOString(),
-            source: source || 'mflow-app'
+            description: description || message,
+            source: source || 'mflow-app',
+            entity: entity || 'mflow',
+            priority: priority || 'P3',
+            timestamp: timestamp || new Date().toISOString()
+        };
+
+        // Add optional fields if provided
+        if (alias) alertPayload.alias = alias;
+        if (tags && Array.isArray(tags)) alertPayload.tags = tags;
+        if (actions && Array.isArray(actions)) alertPayload.actions = actions;
+        
+        // Always include extraProperties with MFlow context
+        alertPayload.extraProperties = {
+            mflowContext: context || {},
+            timestamp: alertPayload.timestamp,
+            ...(extraProperties && typeof extraProperties === 'object' ? extraProperties : {})
         };
 
         console.log('Sending alert to Compass:', {

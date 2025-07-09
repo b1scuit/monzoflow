@@ -6,9 +6,16 @@ export interface CompassAlertContext {
 
 export interface CompassAlertData {
     message: string;
-    timestamp: string;
-    source: string;
+    timestamp?: string;
+    source?: string;
     context?: CompassAlertContext;
+    description?: string;
+    entity?: string;
+    alias?: string;
+    priority?: 'P1' | 'P2' | 'P3' | 'P4' | 'P5';
+    tags?: string[];
+    actions?: string[];
+    extraProperties?: Record<string, any>;
 }
 
 export interface CompassAlertResponse {
@@ -171,4 +178,50 @@ export async function compassAlertPerformance(
         performanceContext,
         functions
     );
+}
+
+/**
+ * Enhanced function to send alerts with full Compass API support
+ * 
+ * @param alertData - Complete alert data object with all Compass API fields
+ * @param functions - Firebase Functions instance (optional, used for cloud alerting)
+ * @returns Promise<boolean> - true if cloud alert was sent successfully, false otherwise
+ */
+export async function compassAlertEnhanced(
+    alertData: CompassAlertData,
+    functions?: Functions
+): Promise<boolean> {
+    // Immediate console.error for local debugging
+    const timestamp = alertData.timestamp || new Date().toISOString();
+    const source = alertData.source || getSourceLocation();
+    
+    console.error(`[${timestamp}] ${alertData.message}`, {
+        source,
+        priority: alertData.priority || 'P3',
+        entity: alertData.entity,
+        context: alertData.context,
+        description: alertData.description
+    });
+    
+    // Return early if no Firebase Functions instance provided
+    if (!functions) {
+        return true;
+    }
+    
+    try {
+        // Prepare complete alert data
+        const completeAlertData: CompassAlertData = {
+            ...alertData,
+            timestamp,
+            source: alertData.source || source
+        };
+        
+        const compassAlertFunction = httpsCallable(functions, 'compassAlert');
+        const response = await compassAlertFunction(completeAlertData);
+        
+        return (response.data as CompassAlertResponse)?.success === true;
+    } catch (error) {
+        console.error('Failed to send Compass alert:', error);
+        return false;
+    }
 }

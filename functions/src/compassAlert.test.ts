@@ -168,9 +168,15 @@ describe('compassAlert Function', () => {
 
       expect(requestBody).toEqual({
         message: 'Test alert with context',
-        context: { userId: '123', action: 'user_login' },
+        description: 'Test alert with context',
+        source: 'custom-source',
+        entity: 'mflow',
+        priority: 'P3',
         timestamp: testTimestamp,
-        source: 'custom-source'
+        extraProperties: {
+          mflowContext: { userId: '123', action: 'user_login' },
+          timestamp: testTimestamp
+        }
       });
     });
 
@@ -295,9 +301,15 @@ describe('compassAlert Function', () => {
 
       expect(requestBody).toEqual({
         message: 'Test alert',
-        context: {},
+        description: 'Test alert',
+        source: 'mflow-app',
+        entity: 'mflow',
+        priority: 'P3',
         timestamp: expect.any(String),
-        source: 'mflow-app'
+        extraProperties: {
+          mflowContext: {},
+          timestamp: expect.any(String)
+        }
       });
 
       // Verify timestamp is valid ISO string
@@ -355,7 +367,10 @@ describe('compassAlert Function', () => {
       const callArgs = mockFetch.mock.calls[0];
       const requestBody = JSON.parse(callArgs[1].body);
 
-      expect(requestBody.context).toEqual({});
+      expect(requestBody.extraProperties).toEqual({
+        mflowContext: {},
+        timestamp: expect.any(String)
+      });
     });
 
     it('should handle null context', async () => {
@@ -371,7 +386,10 @@ describe('compassAlert Function', () => {
       const callArgs = mockFetch.mock.calls[0];
       const requestBody = JSON.parse(callArgs[1].body);
 
-      expect(requestBody.context).toEqual({});
+      expect(requestBody.extraProperties).toEqual({
+        mflowContext: {},
+        timestamp: expect.any(String)
+      });
     });
 
     it('should handle complex nested context', async () => {
@@ -393,7 +411,10 @@ describe('compassAlert Function', () => {
       const callArgs = mockFetch.mock.calls[0];
       const requestBody = JSON.parse(callArgs[1].body);
 
-      expect(requestBody.context).toEqual(complexContext);
+      expect(requestBody.extraProperties).toEqual({
+        mflowContext: complexContext,
+        timestamp: expect.any(String)
+      });
     });
 
     it('should handle very long messages', async () => {
