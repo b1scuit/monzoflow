@@ -21,6 +21,7 @@
 */
 
 import {onCall, HttpsError} from "firebase-functions/v2/https";
+import {SecretManagerServiceClient} from "@google-cloud/secret-manager";
 
 const fetch = require("node-fetch");
 
@@ -80,6 +81,35 @@ export const tokenExchange = onCall({
     }
 });
 
+// Initialize Secret Manager client
+const secretClient = new SecretManagerServiceClient();
+
+/**
+ * Helper function to get secret from GCP Secret Manager
+ */
+async function getSecret(secretName: string): Promise<string> {
+    try {
+        const projectId = process.env.GCLOUD_PROJECT || process.env.GCP_PROJECT;
+        if (!projectId) {
+            throw new Error('Project ID not found in environment variables');
+        }
+        
+        const [version] = await secretClient.accessSecretVersion({
+            name: `projects/${projectId}/secrets/${secretName}/versions/latest`,
+        });
+        
+        const secretValue = version.payload?.data?.toString();
+        if (!secretValue) {
+            throw new Error(`Secret ${secretName} is empty or not found`);
+        }
+        
+        return secretValue;
+    } catch (error) {
+        console.error(`Failed to get secret ${secretName}:`, error);
+        throw error;
+    }
+}
+
 // Compass Alert function to forward alerts to Compass API
 export const compassAlert = onCall({
     cors: true // Enable CORS for all origins
@@ -97,16 +127,28 @@ export const compassAlert = onCall({
             throw new HttpsError('invalid-argument', 'Alert message is required');
         }
 
-        // Get Compass API credentials from environment variables
+        // Get Compass API URL from environment variables
         const compassApiUrl = process.env.COMPASS_API_URL;
-        const atlassianCredentials = process.env.ATLASSIAN_CREDENTIALS;
+        
+        if (!compassApiUrl) {
+            console.error('COMPASS_API_URL not configured');
+            throw new HttpsError('failed-precondition', 'Compass API URL not configured');
+        }
 
-        if (!compassApiUrl || !atlassianCredentials) {
-            console.error('Compass API configuration missing:', {
-                hasUrl: !!compassApiUrl,
-                hasCredentials: !!atlassianCredentials
-            });
-            throw new HttpsError('failed-precondition', 'Compass API not configured');
+        // Get Atlassian credentials from Secret Manager
+        let atlassianEmail: string;
+        let atlassianApiKey: string;
+        
+        try {
+            console.log('Fetching Atlassian credentials from Secret Manager...');
+            [atlassianEmail, atlassianApiKey] = await Promise.all([
+                getSecret('atlassian-email'),
+                getSecret('atlassian-api-key')
+            ]);
+            console.log('Successfully retrieved Atlassian credentials');
+        } catch (error) {
+            console.error('Failed to retrieve Atlassian credentials from Secret Manager:', error);
+            throw new HttpsError('failed-precondition', 'Failed to retrieve Atlassian credentials');
         }
 
         // Prepare alert payload
@@ -130,7 +172,8 @@ export const compassAlert = onCall({
 
             try {
                 // Create basic auth header from email:api-key format
-                const basicAuthHeader = `Basic ${Buffer.from(atlassianCredentials).toString('base64')}`;
+                const credentials = `${atlassianEmail}:${atlassianApiKey}`;
+                const basicAuthHeader = `Basic ${Buffer.from(credentials).toString('base64')}`;
                 
                 const response = await fetch(compassApiUrl, {
                     method: 'POST',

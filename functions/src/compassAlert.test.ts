@@ -5,6 +5,16 @@ import { TestEnvironment } from './test-setup';
 const mockFetch = jest.fn();
 jest.mock('node-fetch', () => mockFetch);
 
+// Mock Secret Manager
+const mockAccessSecretVersion = jest.fn();
+jest.mock('@google-cloud/secret-manager', () => {
+  return {
+    SecretManagerServiceClient: jest.fn().mockImplementation(() => ({
+      accessSecretVersion: mockAccessSecretVersion
+    }))
+  };
+});
+
 // Mock console methods
 const mockConsoleLog = jest.fn();
 const mockConsoleError = jest.fn();
@@ -32,6 +42,22 @@ describe('compassAlert Function', () => {
   beforeEach(() => {
     envHelper = new TestEnvironment();
     envHelper.setupCompassEnv();
+    
+    // Setup default Secret Manager mocks
+    mockAccessSecretVersion.mockImplementation((request: any) => {
+      const secretName = request.name.split('/secrets/')[1].split('/versions/')[0];
+      if (secretName === 'atlassian-email') {
+        return Promise.resolve([{
+          payload: { data: Buffer.from('test@example.com') }
+        }]);
+      } else if (secretName === 'atlassian-api-key') {
+        return Promise.resolve([{
+          payload: { data: Buffer.from('test-api-key') }
+        }]);
+      }
+      return Promise.reject(new Error(`Unknown secret: ${secretName}`));
+    });
+    
     jest.clearAllMocks();
   });
 
@@ -61,23 +87,25 @@ describe('compassAlert Function', () => {
     it('should require COMPASS_API_URL', async () => {
       envHelper.clearEnvVars(['COMPASS_API_URL']);
       
-      await expect(wrapped({ data: { message: 'Test alert' } })).rejects.toThrow('Compass API not configured');
+      await expect(wrapped({ data: { message: 'Test alert' } })).rejects.toThrow('Compass API URL not configured');
       
-      expect(mockConsoleError).toHaveBeenCalledWith('Compass API configuration missing:', {
-        hasUrl: false,
-        hasCredentials: true
-      });
+      expect(mockConsoleError).toHaveBeenCalledWith('COMPASS_API_URL not configured');
     });
 
-    it('should require ATLASSIAN_CREDENTIALS', async () => {
-      envHelper.clearEnvVars(['ATLASSIAN_CREDENTIALS']);
+    it('should require project ID for Secret Manager', async () => {
+      envHelper.clearEnvVars(['GCLOUD_PROJECT']);
       
-      await expect(wrapped({ data: { message: 'Test alert' } })).rejects.toThrow('Compass API not configured');
+      await expect(wrapped({ data: { message: 'Test alert' } })).rejects.toThrow('Failed to retrieve Atlassian credentials');
       
-      expect(mockConsoleError).toHaveBeenCalledWith('Compass API configuration missing:', {
-        hasUrl: true,
-        hasCredentials: false
-      });
+      expect(mockConsoleError).toHaveBeenCalledWith('Failed to retrieve Atlassian credentials from Secret Manager:', expect.any(Error));
+    });
+    
+    it('should handle Secret Manager failures', async () => {
+      mockAccessSecretVersion.mockRejectedValue(new Error('Secret not found'));
+      
+      await expect(wrapped({ data: { message: 'Test alert' } })).rejects.toThrow('Failed to retrieve Atlassian credentials');
+      
+      expect(mockConsoleError).toHaveBeenCalledWith('Failed to retrieve Atlassian credentials from Secret Manager:', expect.any(Error));
     });
   });
 

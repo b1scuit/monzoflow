@@ -177,7 +177,7 @@ export class TestEnvironment {
   setupCompassEnv() {
     this.setEnvVars({
       COMPASS_API_URL: 'https://compass.example.com/api',
-      ATLASSIAN_CREDENTIALS: 'test@example.com:test-api-key'
+      GCLOUD_PROJECT: 'test-project-id'
     });
   }
 
